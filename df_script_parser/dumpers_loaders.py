@@ -94,7 +94,4 @@ yaml_dumper_loader.width = inf  # type: ignore
 
 
 def pp(obj, stream):
-    try:
-        pprint.pprint(obj, stream, sort_dicts=False)
-    except TypeError as e:
-        raise Exception("You need python 3.8+ for df_script_parser.yaml2py") from e
+    pprint.pprint(obj, stream)

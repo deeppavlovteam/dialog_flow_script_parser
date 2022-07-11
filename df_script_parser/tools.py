@@ -8,6 +8,14 @@ from .dumpers_loaders import yaml_dumper_loader, pp
 from black import format_file_in_place, FileMode, WriteBack
 
 
+class Replace:
+    def __init__(self, dictionary):
+        self.dict = dictionary
+
+    def __repr__(self):
+        return repr(self.dict)
+
+
 def py2yaml(
         input_file: tp.Union[str, Path],
         output_file: tp.Union[str, Path],
@@ -77,7 +85,7 @@ def yaml2py(
 
         disambiguation = Disambiguator(script, imports)
         output.write("\nscript = ")
-        pp(disambiguation.result, output)
+        pp(Replace(disambiguation.result), output)
         output.write("\nstart_label = ")
         pp(
             tuple(disambiguation.start_label) if disambiguation.start_label else None,

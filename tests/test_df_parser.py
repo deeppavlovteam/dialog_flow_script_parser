@@ -3,8 +3,6 @@ import pytest
 from pathlib import Path
 import sys
 from df_script_parser import py2yaml, yaml2py
-from df_script_parser.dumpers_loaders import pp
-from df_script_parser.processors import devnull
 
 
 def test_version():
@@ -26,9 +24,6 @@ def test_py2yaml(input_file, output_file, tmp_path):
     [(example / "py2yaml" / "script.yaml", example / "yaml2py" / "main.py") for example in Path("examples").iterdir()],
 )
 def test_yaml2py(input_file, output_file, tmp_path):
-    # check python version
-    if sys.version_info.minor < 8:
-        return
     yaml2py(input_file, tmp_path / "main.py")
     with open(output_file, "r") as file_1, open(tmp_path / "main.py", "r") as file_2:
         assert file_1.read() == file_2.read()
