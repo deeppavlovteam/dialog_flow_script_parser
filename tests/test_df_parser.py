@@ -1,6 +1,7 @@
 from df_script_parser import __version__
 import pytest
 from pathlib import Path
+import sys
 from df_script_parser import py2yaml, yaml2py
 from df_script_parser.dumpers_loaders import pp
 from df_script_parser.processors import devnull
@@ -11,35 +12,23 @@ def test_version():
 
 
 @pytest.mark.parametrize(
-    "input_file,output_dir",
-    [(example / "py" / "main.py", example / "py2yaml") for example in Path("examples").iterdir()],
+    "input_file,output_file",
+    [(example / "py" / "main.py", example / "py2yaml" / "script.yaml") for example in Path("examples").iterdir()],
 )
-def test_py2yaml(input_file, output_dir, tmp_path):
-    py2yaml(input_file, tmp_path)
-    for file_1, file_2 in zip(sorted(output_dir.iterdir()), sorted(tmp_path.iterdir())):
-        assert sorted(file_1.open("r").readlines()) == sorted(file_2.open("r").readlines()), (
-            f"Files {file_1.absolute()} and {file_2} don't match.\n"
-            f"Expected file: {file_1.open('r').read()}\n"
-            f"New file: {file_2.open('r').read()}"
-        )
+def test_py2yaml(input_file, output_file, tmp_path):
+    py2yaml(input_file, tmp_path / "script.yaml")
+    with open(output_file, "r") as file_1, open(tmp_path / "script.yaml", "r") as file_2:
+        assert file_1.read() == file_2.read()
 
 
 @pytest.mark.parametrize(
-    "input_dir,output_file",
-    [(example / "py2yaml", example / "yaml2py" / "main.py") for example in Path("examples").iterdir()],
+    "input_file,output_file",
+    [(example / "py2yaml" / "script.yaml", example / "yaml2py" / "main.py") for example in Path("examples").iterdir()],
 )
-def test_yaml2py(input_dir, output_file, tmp_path):
-    # check pprint library
-    with open(devnull, "w") as f:
-        try:
-            pp(1, f)
-        except Exception:
-            return
-    yaml2py(input_dir, tmp_path / "main.py")
-    file_1 = output_file
-    file_2 = tmp_path / "main.py"
-    assert sorted(file_1.open("r").readlines()) == sorted(file_2.open("r").readlines()), (
-        f"Files {file_1.absolute()} and {file_2} don't match.\n"
-        f"Expected file: {file_1.open('r').read()}\n"
-        f"New file: {file_2.open('r').read()}"
-    )
+def test_yaml2py(input_file, output_file, tmp_path):
+    # check python version
+    if sys.version_info.minor < 8:
+        return
+    yaml2py(input_file, tmp_path / "main.py")
+    with open(output_file, "r") as file_1, open(tmp_path / "main.py", "r") as file_2:
+        assert file_1.read() == file_2.read()

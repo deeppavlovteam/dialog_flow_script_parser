@@ -1,19 +1,11 @@
 import logging
-import math
-from abc import ABC, abstractmethod
 import libcst as cst
 import typing as tp
 from pathlib import Path
 import sys
-from ruamel.yaml import YAML
 import collections
 from .distribution_metadata import get_metadata, get_location
 import re
-
-
-def enquote_string(string: str) -> str:
-    """Enquote a string."""
-    return "'" + re.sub(r"\n[ \t]*", "", string).replace("'", r"\'") + "'"
 
 
 def evaluate(node: cst.CSTNode) -> str:
@@ -25,25 +17,7 @@ def evaluate(node: cst.CSTNode) -> str:
     return cst.parse_module("").code_for_node(node)
 
 
-class CodeBlock(ABC):
-    """Block of code."""
-
-    name: str
-
-    @abstractmethod
-    def append(self, node: cst.CSTNode) -> None:
-        """Append a node to the code block.
-
-        :param node: cst.Node
-        :return: None
-        """
-
-    @abstractmethod
-    def dump(self, output_dir: tp.Union[str, Path]) -> None:
-        """Dump code block into file with the name self.name inside the output_dir."""
-
-
-class ImportBlock(CodeBlock):
+class ImportBlock:
     """Block of code with import statements."""
 
     class ChangeDir:
@@ -58,7 +32,7 @@ class ImportBlock(CodeBlock):
         def __exit__(self, exc_type, exc_val, exc_tb):
             sys.path.pop(0)
 
-    def __init__(self, working_dir: tp.Union[str, Path], name: str):
+    def __init__(self, working_dir: tp.Union[str, Path]):
         self.imports: tp.Dict[str, tp.DefaultDict[str, tp.List[str]]] = {
             "pypi": collections.defaultdict(list),
             "system": collections.defaultdict(list),
@@ -66,9 +40,7 @@ class ImportBlock(CodeBlock):
         }
         self.modules: tp.Dict[str, list] = {}
         self.working_dir: tp.Union[str, Path] = working_dir
-        self.name = name
-        self.names: tp.List[str] = []
-        logging.debug(f"Created ImportBlock with working_dir={working_dir}, name={name}")
+        logging.debug(f"Created ImportBlock with working_dir={working_dir}")
 
     def _find_module(self, module: str) -> list:
         with ImportBlock.ChangeDir(self.working_dir):
@@ -116,7 +88,7 @@ class ImportBlock(CodeBlock):
         module = module.split(".")[0]
         if module not in self.modules.keys():
             self.modules[module] = self._find_module(module)
-        self.modules[module].append(code)
+        self.modules[module].append(re.sub(r"\n[ \t]*|\(|\)", "", code).strip(",").replace(",", ", "))
         return
 
     def append(self, node: cst.CSTNode):
@@ -137,16 +109,12 @@ class ImportBlock(CodeBlock):
         else:
             raise TypeError(f"Not an import: {evaluate(node)}")
 
-    def dump(self, output_dir: tp.Union[str, Path]):
-        ruyaml = YAML()
-        ruyaml.width = math.inf  # type: ignore
-        imports = dict(
+    def get_dict(self) -> dict:
+        return dict(
             pypi=dict(self.imports["pypi"]),
             system=dict(self.imports["system"]),
             local=dict(self.imports["local"]),
         )
-        with open(Path(output_dir) / self.name, "w") as f:
-            ruyaml.dump(imports, f)
 
     def __iter__(self):
         for key in self.imports.keys():

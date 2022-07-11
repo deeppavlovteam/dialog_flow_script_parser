@@ -1,7 +1,12 @@
 import pprint
 from ruamel.yaml import YAML
 from math import inf
-from .parse_utils import enquote_string
+import re
+
+
+def enquote_string(string: str) -> str:
+    """Enquote a string."""
+    return "'" + re.sub(r"\n[ \t]*", "", string).replace("'", r"\'") + "'"
 
 
 class StringTag:
@@ -74,18 +79,18 @@ class FallbackPython(Fallback):
     yaml_tag = u"!fallback:py"
 
 
-ryaml = YAML()
+yaml_dumper_loader = YAML()
 
-ryaml.register_class(String)
-ryaml.register_class(Python)
-ryaml.register_class(Start)
-ryaml.register_class(StartString)
-ryaml.register_class(StartPython)
-ryaml.register_class(Fallback)
-ryaml.register_class(FallbackString)
-ryaml.register_class(FallbackPython)
+yaml_dumper_loader.register_class(String)
+yaml_dumper_loader.register_class(Python)
+yaml_dumper_loader.register_class(Start)
+yaml_dumper_loader.register_class(StartString)
+yaml_dumper_loader.register_class(StartPython)
+yaml_dumper_loader.register_class(Fallback)
+yaml_dumper_loader.register_class(FallbackString)
+yaml_dumper_loader.register_class(FallbackPython)
 
-ryaml.width = inf  # type: ignore
+yaml_dumper_loader.width = inf  # type: ignore
 
 
 def pp(obj, stream):

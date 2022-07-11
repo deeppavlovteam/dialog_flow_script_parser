@@ -17,6 +17,7 @@ from pyflakes.api import check
 from pyflakes.reporter import Reporter
 from os import devnull
 import logging
+from df_engine.core.keywords import Keywords as kw
 
 
 class NodeProcessor:
@@ -48,16 +49,32 @@ class NodeProcessor:
         logging.info(f"start_label: {start_label}, fallback_label: {fallback_label}")
         self.result = self._process_node(start_node)
 
+    def _validate_stack(self):
+        keywords = list(kw.__members__)
+        if len(self.stack) == 2 and self.stack[0] == "GLOBAL" and self.stack[1] not in keywords:
+            logging.warning(f"GLOBAL keys should be keywords: {self.stack}")
+        if len(self.stack) == 3 and self.stack[0] != "GLOBAL" and self.stack[2] not in keywords:
+            logging.warning(f"Node keys should be keywords: {self.stack}")
+
     def _process_node(self, node: cst.CSTNode) -> tp.Any:
         """Process a node. Return a python object.
 
         Processing rules:
 
-        * If a node is a dictionary, return a dict with its keys and values processed.
-        * If a node is a list, return a list with its values processed.
-        * If a node is a tuple and self.parse_tuples, return a tuple with its values processed.
-        * If a node is a BasicString and self.safe_mode, check for string ambiguity -- check if the string could be python code. If it could return a String instance. Also check if the string is a start or a fallback node. Return an instance of the Start or the Fallback class. Return a string otherwise
-        * Otherwise check if the node could be a start or fallback node. If so return an instance of the Start or Fallback class else return a str.
+        * If a node is a dictionary
+            return a dict with its keys and values processed.
+        * If a node is a list
+            return a list with its values processed.
+        * If a node is a tuple and self.parse_tuples
+            return a tuple with its values processed.
+        * If a node is a BasicString and self.safe_mode
+            check for string ambiguity -- check if the string could be python code.
+            If it could return a String instance.
+            Also check if the string is a start or a fallback node.
+            Return an instance of the Start or the Fallback class.
+            Return a string otherwise
+        * Otherwise check if the node could be a start or fallback node.
+            If so return an instance of the Start or Fallback class else return a str.
         """
         # dict
         if isinstance(node, cst.Dict):
@@ -66,6 +83,7 @@ class NodeProcessor:
                 assert isinstance(element, cst.DictElement), "Starred dict elements are not supported"
                 key = self._process_node(element.key)
                 self.stack.append(key)
+                self._validate_stack()
                 result[key] = self._process_node(element.value)
                 self.stack.pop()
             return dict(result)
@@ -91,26 +109,18 @@ class NodeProcessor:
             value = node.evaluated_value
             # ambiguous str
             if self.safe_mode and is_correct(self.imports, value):
-                logging.info(f"Comparing paths: {self.stack + [String(value)]}")
                 if self.stack + [String(value)] == self.start_label:
-                    logging.info("StartString")
                     return StartString(value)
                 if self.stack + [String(value)] == self.fallback_label:
-                    logging.info("FallbackString")
                     return FallbackString(value)
-                logging.info("String")
                 return String(value)
         else:
             value = re.sub(r"\n[ \t]*", "", evaluate(node))
 
-        logging.info(f"Comparing paths: {self.stack + [value]}")
         if self.stack + [value] == self.start_label:
-            logging.info("Start")
             return Start(value)
         if self.stack + [value] == self.fallback_label:
-            logging.info("Fallback")
             return Fallback(value)
-        logging.info("None")
         return value
 
 
@@ -127,15 +137,28 @@ class Disambiguator:
         self.fallback_label: tp.Optional[tp.List[tp.Any]] = None
         self.result = self._convert(script)
 
+    def _validate_stack(self):
+        keywords = list(map(Python, list(kw.__members__)))
+        if len(self.stack) == 2 and self.stack[0] == Python("GLOBAL") and self.stack[1] not in keywords:
+            logging.warning(f"GLOBAL keys should be keywords: {self.stack}")
+        if len(self.stack) == 3 and self.stack[0] != Python("GLOBAL") and self.stack[2] not in keywords:
+            logging.warning(f"Node keys should be keywords: {self.stack}")
+
     def _convert(self, obj: tp.Any) -> tp.Any:
         """Recursively replace all str instances inside os an obj with a correct StringTag subclass instance.
 
         Replacement rules:
 
-        * If obj is a dict return a dict with all of its keys and values converted.
-        * If obj is a list return a list with all of its values converted.
-        * If obj is an instance of Start of Fallback classes or their subclasses store current path (as given by self.stack) in either self.start_label or self.fallback_label
-        * If obj is an instance of str or Start or Fallback classes return either an instance of String or Python class or their subclasses. If the string is a correct python code given self.imports return a Python or its subclass instance else return a String or its subclass instance.
+        * If obj is a dict
+            return a dict with all of its keys and values converted.
+        * If obj is a list
+            return a list with all of its values converted.
+        * If obj is an instance of Start of Fallback classes or their subclasses
+            store current path (as given by self.stack) in either self.start_label or self.fallback_label
+        * If obj is an instance of str or Start or Fallback classes
+            return either an instance of String or Python class or their subclasses.
+            * If the string is a correct python code given self.imports
+                return a Python or its subclass instance else return a String or its subclass instance.
         """
         # ordered dict
         if isinstance(obj, dict):
@@ -143,6 +166,7 @@ class Disambiguator:
             for key in obj.keys():
                 new_key = self._convert(key)
                 self.stack.append(new_key)
+                self._validate_stack()
                 result[new_key] = self._convert(obj[key])
                 self.stack.pop()
             return dict(result)
