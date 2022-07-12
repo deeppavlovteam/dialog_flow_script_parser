@@ -1,7 +1,6 @@
 from df_script_parser import __version__
 import pytest
 from pathlib import Path
-import sys
 from df_script_parser import py2yaml, yaml2py
 
 

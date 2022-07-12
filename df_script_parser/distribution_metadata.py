@@ -102,7 +102,6 @@ except ImportError:
         except AttributeError as e:
             logging.debug(e)
 
-
     def get_location(module: str, working_dir: tp.Union[str, Path]) -> tp.Optional[str]:
         """Get module location.
 
@@ -118,4 +117,3 @@ except ImportError:
                 logging.warning(f"File {spec.origin} not in {working_dir}.")
                 logging.debug(e)
                 return str(Path(spec.origin).absolute())
-

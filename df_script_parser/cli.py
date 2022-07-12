@@ -3,15 +3,8 @@ import argparse
 from .tools import py2yaml, yaml2py
 
 
-def is_dir(path: str) -> Path:
-    path = Path(path)
-    if path.is_dir():
-        return path
-    raise argparse.ArgumentTypeError(f"Not a dir: {path}")
-
-
-def is_file(path: str) -> Path:
-    path = Path(path)
+def is_file(arg: str) -> Path:
+    path = Path(arg)
     if path.is_file():
         return path
     raise argparse.ArgumentTypeError(f"Not a file: {path}")
@@ -26,10 +19,10 @@ def py2yaml_cli():
         type=is_file,
     )
     parser.add_argument(
-        "output_dir",
-        metavar="OUTPUT_DIR",
-        help="Directory to store parser output in.",
-        type=is_dir,
+        "output_file",
+        metavar="OUTPUT_FILE",
+        help="Yaml file to store parser output in.",
+        type=str,
     )
     args = parser.parse_args()
     py2yaml(**vars(args))
@@ -38,16 +31,16 @@ def py2yaml_cli():
 def yaml2py_cli():
     parser = argparse.ArgumentParser(description=yaml2py.__doc__)
     parser.add_argument(
-        "input_dir",
-        metavar="INPUT_DIR",
-        help="Directory with yaml files.",
-        type=is_dir,
+        "input_file",
+        metavar="INPUT_FILE",
+        help="Yaml file to load.",
+        type=is_file,
     )
     parser.add_argument(
         "output_file",
         metavar="OUTPUT_FILE",
         help="Python file, output.",
-        type=is_file,
+        type=str,
     )
     args = parser.parse_args()
     yaml2py(**vars(args))

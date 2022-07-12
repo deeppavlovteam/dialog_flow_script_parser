@@ -10,10 +10,7 @@ from df_engine.core.actor import Actor
 # Match nodes with Actor calls e.g. `a = Actor(args)` or `b = df_engine.core.Actor(args)`
 actor_call_matcher = m.Call(func=m.OneOf(m.Name("Actor"), m.Attribute(attr=m.Name("Actor"))))
 
-actor_matcher = m.OneOf(
-    m.Assign(value=actor_call_matcher),
-    m.AnnAssign(value=actor_call_matcher)
-)
+actor_matcher = m.OneOf(m.Assign(value=actor_call_matcher), m.AnnAssign(value=actor_call_matcher))
 
 
 class Parser(m.MatcherDecoratableVisitor):

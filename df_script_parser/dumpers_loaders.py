@@ -1,4 +1,3 @@
-import pprint
 from ruamel.yaml import YAML
 from math import inf
 import re
@@ -91,7 +90,3 @@ yaml_dumper_loader.register_class(FallbackString)
 yaml_dumper_loader.register_class(FallbackPython)
 
 yaml_dumper_loader.width = inf  # type: ignore
-
-
-def pp(obj, stream):
-    pprint.pprint(obj, stream)

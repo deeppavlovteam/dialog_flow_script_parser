@@ -44,15 +44,17 @@ class ImportBlock:
 
     def _find_module(self, module: str) -> list:
         with ImportBlock.ChangeDir(self.working_dir):
+            parent_module = module.split(".")[0]
+
             # find vcs or pypi info
-            metadata = get_metadata(module)
+            metadata = get_metadata(parent_module)
 
             if metadata is not None:
                 return self.imports["pypi"][metadata]
 
             # find modules in system modules
-            if module in sys.modules.keys():
-                return self.imports["system"][module]
+            if parent_module in sys.modules.keys():
+                return self.imports["system"][parent_module]
 
             # find locally installed modules
             location = get_location(module, self.working_dir)
@@ -85,7 +87,6 @@ class ImportBlock:
 
         :return: None
         """
-        module = module.split(".")[0]
         if module not in self.modules.keys():
             self.modules[module] = self._find_module(module)
         self.modules[module].append(re.sub(r"\n[ \t]*|\(|\)", "", code).strip(",").replace(",", ", "))
