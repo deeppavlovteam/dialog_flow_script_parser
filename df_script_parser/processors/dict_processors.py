@@ -95,10 +95,12 @@ class NodeProcessor:
             value = node.evaluated_value
             if is_correct(list(self.namespace), value):
                 return String(value)
+            else:
+                return String(value, add_tag=False)
         else:
             value = re.sub(r"\n[ \t]*", "", evaluate(node))
 
-        return Python(value)
+        return Python(value, self.namespace.get_absolute_name(value))
 
     def __call__(self, node: cst.CSTNode):
         return self._process_node(node)

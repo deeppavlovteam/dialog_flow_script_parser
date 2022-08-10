@@ -24,15 +24,23 @@ class RecursiveParser:
         self.unprocessed: tp.List[NamespaceTag] = []
 
     def process_import(self, module_type: ModuleType, module_metadata: ModuleMetadata):
+        """Import module hook for Namespace.
+
+        Adds distribution metadata to requirements. Parses local files.
+
+        :param module_type:
+        :param module_metadata:
+        :return:
+        """
         if module_type == ModuleType.PYPI and module_metadata not in self.requirements:
             self.requirements.append(module_metadata)
         if module_type == ModuleType.LOCAL:
             module_name = get_module_name(Path(module_metadata), self.project_root_dir)
 
-            if not (NamespaceTag(module_name) in self.namespaces or RootNamespaceTag(module_name) in self.namespaces):
+            if NamespaceTag(module_name) not in self.namespaces:
 
                 namespace = self.namespaces[NamespaceTag(module_name)] = Namespace(
-                    Path(module_metadata), self.project_root_dir, self.process_import, self.resolve_name
+                    Path(module_metadata), self.project_root_dir, self.process_import
                 )
 
                 try:
@@ -41,10 +49,13 @@ class RecursiveParser:
                     self.unprocessed.append(NamespaceTag(module_name))
                     logging.warning(f"File {Path(module_metadata)} not included: {error}")
 
-    def resolve_name(self, namespace: str, request: str) -> object:
-        pass
-
     def fill_namespace_from_file(self, file: Path, namespace: Namespace) -> None:
+        """Parse a file, add its contents to a namespace.
+
+        :param file:
+        :param namespace:
+        :return:
+        """
         with open(file, "r") as input_file:
             py_contents = input_file.read()
 
@@ -55,10 +66,15 @@ class RecursiveParser:
         check_file_structure(parsed_file.visit(transformer))
 
     def parse_project_dir(self, starting_from_file: Path) -> dict:
+        """Parse a file, mark it as a Root file.
+
+        :param starting_from_file:
+        :return:
+        """
         starting_from_file = Path(starting_from_file).absolute()
         namespace = self.namespaces[
             RootNamespaceTag(get_module_name(starting_from_file, self.project_root_dir))
-        ] = Namespace(starting_from_file, self.project_root_dir, self.process_import, self.resolve_name)
+        ] = Namespace(starting_from_file, self.project_root_dir, self.process_import)
         self.fill_namespace_from_file(starting_from_file, namespace)
         return self.get_dict()
 

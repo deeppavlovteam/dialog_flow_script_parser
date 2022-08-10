@@ -31,13 +31,28 @@ def enquote_string(string: str) -> str:
 
 
 def get_module_name(path: Path, project_root_dir: Path) -> str:
-    """Get python import string for the file path inside the project_root_dir."""
+    """Get python import string for the file path inside the project_root_dir.
+
+    EXAMPLE
+    -------
+    dir
+    +-- file.py
+    +-- package
+    +--+-- __init__.py
+    +--+-- file.py
+
+    get_module_name("dir/file.py", "dir") = "file"
+    get_module_name("dir/package/__init__.py", "dir") = "package"
+    get_module_name("dir/package/file.py", "dir") = "package.file"
+    get_module_name("dir/package/__init__.py", "dir/package") = "package"
+    get_module_name("dir/package/file.py", "dir/package") = "package.file"
+    """
     if Path(project_root_dir / "__init__.py").exists():
         project_root_dir = project_root_dir.parent
     path = Path(str(path).rstrip(".py"))
     if str(path).endswith("__init__"):
         path = path.parent
     parts = path.relative_to(project_root_dir).parts
-    return ".".join(parts) if len(parts) > 0 else "."
-    # ToDo: During file parsing check if project_root_dir contains __init__ file.
-    # If it does use project_root_dir name as prefix for namespace names
+    if len(parts) == 0:
+        raise RuntimeError(f"Parts are empty with path={path} and project_root_dir={project_root_dir}")
+    return ".".join(parts)
