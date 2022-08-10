@@ -1,28 +1,39 @@
 import typing as tp
 from pathlib import Path
-import libcst as cst
-from .parse import Parser
-from .processors import NodeProcessor, Disambiguator
-from .dumpers_loaders import yaml_dumper_loader
-from black import FileMode, format_str
 from io import StringIO
+import re
+
+import libcst as cst
+from black import FileMode, format_str
+
+from df_script_parser.processors.parse import Parser
+from df_script_parser.processors.import_block import evaluate
+from df_script_parser.processors.dict_processors import NodeProcessor, Disambiguator
+from df_script_parser.dumpers_loaders import yaml_dumper_loader, Python
+from df_script_parser.utils.exceptions import WrongFileStructure
 
 
 def py2yaml_str(
-    py_contents: str,
-    working_dir: tp.Union[str, Path],
-    safe_mode: bool = True,
+        py_contents: str,
+        file: Path,
+        project_root_dir: Path,
+        safe_mode: bool = True,
 ) -> str:
     """Py2yaml but takes file contents as str and returns str."""
     parsed_file = cst.parse_module(py_contents)
 
-    transformer = Parser(working_dir, safe_mode=safe_mode)
+    transformer = Parser(Path(file), Path(project_root_dir), safe_mode=safe_mode)
 
-    parsed_file.visit(transformer)
+    remaining_file = evaluate(parsed_file.visit(transformer))
+
+    if re.fullmatch(r"[ \t\n\r]*", remaining_file) is None:
+        raise WrongFileStructure(
+            f"File must contain only imports, dict declarations and Actor calls. Found:\n{remaining_file}"
+        )
 
     script = NodeProcessor(
-        transformer.dicts[transformer.args.get("script") or "script"],
-        list(transformer.imports),
+        transformer.dicts[transformer.args.get("script") or Python("script")],
+        transformer.imports,
         start_label=transformer.args.get("start_label"),
         fallback_label=transformer.args.get("fallback_label"),
         safe_mode=safe_mode,
@@ -35,9 +46,10 @@ def py2yaml_str(
 
 
 def py2yaml(
-    input_file: tp.Union[str, Path],
-    output_file: tp.Union[str, Path],
-    safe_mode: bool = True,
+        input_file: tp.Union[str, Path],
+        project_root_dir: tp.Union[str, Path],
+        output_file: tp.Union[str, Path],
+        safe_mode: bool = True,
 ) -> None:
     """Parse python script INPUT_FILE into OUTPUT_FILE containing information about imports used in the script,
     and a dictionary found inside the file.
@@ -48,11 +60,11 @@ def py2yaml(
 
     with open(input_file, "r") as input_f:
         with open(output_file, "w") as output_f:
-            output_f.write(py2yaml_str(input_f.read(), input_file.parent, safe_mode))
+            output_f.write(py2yaml_str(input_f.read(), Path(input_file), Path(project_root_dir), safe_mode))
 
 
 def yaml2py_str(
-    yaml_contents: str,
+        yaml_contents: str,
 ) -> str:
     """Yaml2py but takes yaml contents as str and returns a string."""
     loaded_input_file = yaml_dumper_loader.load(yaml_contents)
@@ -89,8 +101,8 @@ def yaml2py_str(
 
 
 def yaml2py(
-    input_file: tp.Union[str, Path],
-    output_file: tp.Union[str, Path],
+        input_file: tp.Union[str, Path],
+        output_file: tp.Union[str, Path],
 ) -> None:
     """Generate a python script OUTPUT_FILE from yaml INPUT_FILE.
 

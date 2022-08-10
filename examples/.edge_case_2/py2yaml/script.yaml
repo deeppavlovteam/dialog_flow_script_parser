@@ -1,8 +1,8 @@
 imports:
-  pypi: {}
   system:
     abc:
     - from abc import global_flow,  start_label
+  pypi: {}
   local: {}
 script:
   global_flow:

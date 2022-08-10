@@ -1,6 +1,6 @@
 from pathlib import Path
 import argparse
-from .tools import py2yaml, yaml2py
+from df_script_parser.tools import py2yaml, yaml2py
 
 
 def is_file(arg: str) -> Path:

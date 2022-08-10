@@ -7,7 +7,8 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   df_script_parser.p
+   df_script_parser.processors
+   df_script_parser.utils
 
 Submodules
 ----------
@@ -16,11 +17,7 @@ Submodules
    :maxdepth: 4
 
    df_script_parser.cli
-   df_script_parser.distribution_metadata
    df_script_parser.dumpers_loaders
-   df_script_parser.parse
-   df_script_parser.parse_utils
-   df_script_parser.processors
    df_script_parser.tools
 
 Module contents

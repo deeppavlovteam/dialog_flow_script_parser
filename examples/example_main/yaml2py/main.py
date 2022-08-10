@@ -1,3 +1,5 @@
+import typing as tp
+import re
 from df_engine.core.keywords import (
     TRANSITIONS,
     RESPONSE,
@@ -11,8 +13,6 @@ import df_engine.labels as lbl
 from df_engine.core import Actor, Context
 import df_engine.responses as rsp
 import dff
-import typing as tp
-import re
 from functions import add_prefix
 import transitions
 from flow import global_flow

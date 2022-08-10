@@ -1,34 +1,36 @@
-import libcst as cst
+"""Processors for dicts.
+The goal of these processors is to take a dictionary
+and replace all the keys and values that are not dicts, lists or tuples with StringTag instances."""
+import logging
 import typing as tp
-from .parse_utils import evaluate
 import re
-from .dumpers_loaders import (
+from os import devnull
+from collections import OrderedDict
+
+import libcst as cst
+from pyflakes.api import check
+from pyflakes.reporter import Reporter
+
+from df_script_parser.utils.namespaces import Namespace
+from df_script_parser.utils.exceptions import StarredError
+from df_script_parser.utils.convenience_functions import evaluate
+from df_script_parser.utils.code_wrappers import (
     String,
     Python,
     Start,
-    StartString,
-    StartPython,
     Fallback,
+    StartString,
     FallbackString,
+    StartPython,
     FallbackPython,
 )
-from collections import OrderedDict
-from pyflakes.api import check
-from pyflakes.reporter import Reporter
-from os import devnull
-import logging
-from df_engine.core.keywords import Keywords as kw
 
 
 class NodeProcessor:
     def __init__(
         self,
-        start_node: cst.CSTNode,
-        imports: tp.List[str],
-        start_label: tp.List[tp.Any] = None,
-        fallback_label: tp.List[tp.Any] = None,
+        namespace: Namespace,
         parse_tuples: bool = False,
-        safe_mode: bool = True,
     ):
         """Process cst.Dict. Return a python object.
 
@@ -40,21 +42,25 @@ class NodeProcessor:
         :param safe_mode: bool, If false doesn't check for ambiguity.
          Set to false only if there are no strings in your code that have the value that might be python code.
         """
-        self.imports = imports
-        self.start_label = list(start_label) if start_label else None
-        self.fallback_label = list(fallback_label) if fallback_label else None
+        self.namespace: Namespace = namespace
         self.parse_tuples = parse_tuples
-        self.safe_mode = safe_mode
-        self.stack: tp.List[tp.Any] = []
-        logging.info(f"start_label: {start_label}, fallback_label: {fallback_label}")
-        self.result = self._process_node(start_node)
 
-    def _validate_stack(self):
-        keywords = list(kw.__members__)
-        if len(self.stack) == 2 and self.stack[0] == "GLOBAL" and self.stack[1] not in keywords:
-            logging.warning(f"GLOBAL keys should be keywords: {self.stack}")
-        if len(self.stack) == 3 and self.stack[0] != "GLOBAL" and self.stack[2] not in keywords:
-            logging.warning(f"Node keys should be keywords: {self.stack}")
+    def _process_dict(self, node: cst.Dict) -> dict:
+        result = OrderedDict()
+        for element in node.elements:
+            if not isinstance(element, cst.DictElement):
+                raise StarredError("Starred dict elements are not supported")
+            key = self._process_node(element.key)
+            result[key] = self._process_node(element.value)
+        return dict(result)
+
+    def _process_list(self, node: cst.List | cst.Tuple) -> list:
+        result = []
+        for element in node.elements:
+            if not isinstance(element, cst.Element):
+                raise StarredError("Starred elements are not supported")
+            result.append(self._process_node(element.value))
+        return result
 
     def _process_node(self, node: cst.CSTNode) -> tp.Any:
         """Process a node. Return a python object.
@@ -76,52 +82,26 @@ class NodeProcessor:
         * Otherwise check if the node could be a start or fallback node.
             If so return an instance of the Start or Fallback class else return a str.
         """
-        # dict
         if isinstance(node, cst.Dict):
-            result = OrderedDict()
-            for element in node.elements:
-                assert isinstance(element, cst.DictElement), "Starred dict elements are not supported"
-                key = self._process_node(element.key)
-                self.stack.append(key)
-                self._validate_stack()
-                result[key] = self._process_node(element.value)
-                self.stack.pop()
-            return dict(result)
+            return self._process_dict(node)
 
-        # list
         if isinstance(node, cst.List):
-            result = []
-            for element in node.elements:
-                assert isinstance(element, cst.Element), "Starred elements are not supported"
-                result.append(self._process_node(element.value))
-            return result
+            return self._process_list(node)
 
-        # tuple
         if self.parse_tuples and isinstance(node, cst.Tuple):
-            result = []
-            for element in node.elements:
-                assert isinstance(element, cst.Element), "Starred elements are not supported"
-                result.append(self._process_node(element.value))
-            return tuple(result)
+            return tuple(self._process_list(node))
 
-        # str
         if isinstance(node, cst.SimpleString):
             value = node.evaluated_value
-            # ambiguous str
-            if self.safe_mode and is_correct(self.imports, value):
-                if self.stack + [String(value)] == self.start_label:
-                    return StartString(value)
-                if self.stack + [String(value)] == self.fallback_label:
-                    return FallbackString(value)
+            if is_correct(list(self.namespace), value):
                 return String(value)
         else:
             value = re.sub(r"\n[ \t]*", "", evaluate(node))
 
-        if self.stack + [value] == self.start_label:
-            return Start(value)
-        if self.stack + [value] == self.fallback_label:
-            return Fallback(value)
-        return value
+        return Python(value)
+
+    def __call__(self, node: cst.CSTNode):
+        return self._process_node(node)
 
 
 class Disambiguator:
@@ -136,13 +116,6 @@ class Disambiguator:
         self.start_label: tp.Optional[tp.List[tp.Any]] = None
         self.fallback_label: tp.Optional[tp.List[tp.Any]] = None
         self.result = self._convert(script)
-
-    def _validate_stack(self):
-        keywords = list(map(Python, list(kw.__members__)))
-        if len(self.stack) == 2 and self.stack[0] == Python("GLOBAL") and self.stack[1] not in keywords:
-            logging.warning(f"GLOBAL keys should be keywords: {self.stack}")
-        if len(self.stack) == 3 and self.stack[0] != Python("GLOBAL") and self.stack[2] not in keywords:
-            logging.warning(f"Node keys should be keywords: {self.stack}")
 
     def _convert(self, obj: tp.Any) -> tp.Any:
         """Recursively replace all str instances inside os an obj with a correct StringTag subclass instance.
@@ -166,7 +139,7 @@ class Disambiguator:
             for key in obj.keys():
                 new_key = self._convert(key)
                 self.stack.append(new_key)
-                self._validate_stack()
+                # validate_stack(self.stack)
                 result[new_key] = self._convert(obj[key])
                 self.stack.pop()
             return dict(result)
@@ -199,30 +172,14 @@ class Disambiguator:
         return obj
 
 
-def names_from_imports(imports: tp.List[str]) -> tp.List[str]:
-    """Extract list of available names from a list of imports.
+def is_correct(names: tp.List[str], code: str) -> bool:
+    """Check code for correctness if names are available in the namespace.
 
-    example
-    -------
-
-    names_from_imports(["from a import b, c", "import d"]) = ["b", "c", "d"]
+    :param List[str] names: List of the names in the namespace (which may be referenced in the code)
+    :param str code: String to check for correctness
+    :return: Whether code is a correct python code
+    :rtype: bool
     """
-    result = []
-    for import_string in imports:
-        node = cst.parse_module(import_string).body[0].body[0]
-        if isinstance(node, cst.Import):
-            for name in node.names:
-                result.append(name.evaluated_alias if name.asname else name.evaluated_name)
-        elif isinstance(node, cst.ImportFrom):
-            for name in node.names:
-                result.append(name.evaluated_alias if name.asname else name.evaluated_name)
-        else:
-            raise RuntimeError(f"'{import_string}' is not an import")
-    return result
-
-
-def is_correct(imports: tp.List[str], code: str) -> bool:
-    """Return true if code is correct by flake w.r.t. imports."""
-    code_string = "\n".join([*imports, *names_from_imports(imports), code])
+    code_string = "\n".join([*(f"import {name}\n{name}" for name in names), code])
     with open(devnull, "w") as null:
         return check(code_string, "", Reporter(null, null)) == 0
