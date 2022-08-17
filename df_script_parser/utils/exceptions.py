@@ -1,39 +1,56 @@
-"""Exceptions for the parser."""
+"""This module contains different exceptions that might be raised during parsing.
+"""
 
 
 class ParserError(Exception):
-    """Raised during parsing."""
+    """Raised during parsing.
+    """
 
 
-class WrongFileStructure(ParserError):  # ToDo: rewrite doc, add file formats md
-    """Class for exceptions raised due to invalid file structure.
-    For more on correct file structure see `file_formats.md`."""
+class WrongFileStructure(ParserError):  # ToDo: link to the file \w file format rules.
+    """Raised when a file cannot be parsed due to having elements that are not supported by the parser.
+    """
 
 
-class StarredError(ParserError):  # ToDo: rewrite doc
-    """Class for exceptions raised due to using star notation which is not supported by the parser."""
+class StarredError(ParserError):
+    """Raised when star notation is used in the code.
+    """
 
 
 class ModuleNotFoundParserError(ParserError):
-    """Raised when a module imported in a file being parsed is not found."""
+    """Raised when a module imported in a file being parsed is not found.
+    """
 
 
 class ResolutionError(ParserError):
-    """Raised when a :func:`df_script_parser.utils.namespaces.Namespace.resolve` method cannot resolve an expression."""
+    """Raised when a string cannot be cast to :py:class:`df_script_parser.utils.namespaces.Request`.
+    """
 
 
-class ObjectNotFound(ResolutionError):
-    """Raised when the resolve method cannot locate an object inside the namespace."""
+class ObjectNotFoundError(ResolutionError):
+    """Raised when a string cannot be cast to :py:class:`df_script_parser.utils.namespaces.Request`
+    due to the string referencing an object that does not exist.
+    """
 
 
-class NamespaceNotParsed(ResolutionError):
-    """Raised when a namespace which a request is referencing is not available for parsing.
-    This could happen due to :class:`WrongFileStructure` or :class:`ModuleNotFoundParserError`."""
-
-
-class KeyNotFound(ResolutionError):
-    """Raised when a :class:`KeyError` would be raised."""
+class NamespaceNotParsedError(ResolutionError):
+    """Raised when a string cannot be cast to :py:class:`df_script_parser.utils.namespaces.Request`
+    due to the string referencing an object in one of the namespaces that have not been parsed.
+    """
 
 
 class RequestParsingError(ResolutionError):
-    """Raised when name_resolution_parser cannot parse a request due to it not being of the right format."""
+    """Raised when a string cannot be cast to :py:class:`df_script_parser.utils.namespaces.Request`
+    due to the string not being of the required format.
+    """
+
+
+class ScriptValidationError(ParserError):
+    """Raised when :py:class:`df_engine.core.actor.Actor` is either not initialized or initialized incorrectly.
+    """
+
+
+class KeyNotFoundError(ScriptValidationError):
+    """Raised when :py:class:`df_engine.core.actor.Actor` is initialized incorrectly:
+    ``start_label`` or ``fallback_label`` refers to a key that does not exist in a dictionary.
+    """

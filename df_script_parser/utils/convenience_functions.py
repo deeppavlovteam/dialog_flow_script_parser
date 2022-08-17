@@ -1,12 +1,12 @@
 """Frequently used short functions."""
-
+import typing as tp
 import re
 from pathlib import Path
 
 import libcst as cst
 
 
-def evaluate(node: cst.CSTNode | str) -> str:
+def evaluate(node: tp.Union[cst.CSTNode, tp.AnyStr]) -> str:
     """Return string representation of a `libcst.Node`.
 
     :param node: libcst.Node, Node to evaluate.
@@ -34,7 +34,7 @@ def get_module_name(path: Path, project_root_dir: Path) -> str:
     """Get python import string for the file path inside the project_root_dir.
 
     EXAMPLE
-    -------
+    =======
     dir
     +-- file.py
     +-- package

@@ -1,4 +1,5 @@
-"""Functions to get module metadata."""
+"""This module contains functions that retrieve module metadata.
+"""
 import typing as tp
 from pathlib import Path
 import json
@@ -7,18 +8,23 @@ import importlib.util
 import sys
 from enum import Enum
 
-from ruamel.yaml.representer import Representer
 import pkg_resources
 
 from df_script_parser.utils.exceptions import ModuleNotFoundParserError
 
 
 class ChangeDir:
-    """Change 'sys.path' to include the desired path."""
+    """Changes the :py:data:`sys.path` to include a path. The new path is appended at the
+    :py:attr:`ChangeDir.index` position equal to the value of ``len(sys.path)``
+    at the moment of :py:mod:`df_script_parser.utils.module_metadata` import.
+
+    :param path: Path to include in :py:data:`sys.path`
+    :type path: str | :py:class:`pathlib.Path`
+    """
 
     index = len(sys.path)
 
-    def __init__(self, path: tp.Union[str, Path]):
+    def __init__(self, path: str | Path):
         self.path: str = str(Path(path).absolute())
 
     def __enter__(self):
@@ -29,36 +35,43 @@ class ChangeDir:
 
 
 class ModuleType(Enum):
-    """Possible module origin types."""
-    PYPI = "pypi"
+    """Types of modules being imported in a script.
+
+    Enums:
+
+    PIP: "pip"
+        used for modules that are available via pip such as :py:mod:`df_engine`.
+
+    SYSTEM: "system"
+        used for modules listed in :py:data:`sys.stdlib_module_names` such as :py:mod:`sys`.
+
+    LOCAL: "local:
+        used for other modules.
+    """
+    PIP = "pip"
     SYSTEM = "system"
     LOCAL = "local"
 
-    @classmethod
-    def to_yaml(cls, representer: Representer, node: "ModuleType"):
-        return representer.represent_data(node.value)
 
+def get_metadata(module_name: str) -> tp.Optional[str]:
+    """Get distribution metadata.
 
-ModuleMetadata = str
+    :param module_name: Module name
+    :type module_name: str
 
+    :return: Distribution metadata:
 
-def get_metadata(module: str) -> tp.Optional[str]:
-    """Get module metadata.
+        - For distributions installed via VCS: ``"{vcs}+{url}@{commit}"``.
+        - For distributions installed via pypi: ``"{project_name}=={version}"``.
+        - None otherwise.
 
-    Return distribution information:
-
-    * For distributions installed via VCS: "{vcs}+{url}@{commit}"
-    * For distributions installed via pypi: "{project_name}=={version}"
-    * None otherwise
-
-    :param module: str, module name
-    :return: Optional[str], module metadata
+    :rtype: str, optional
     """
     # find distribution
     try:
-        dist = pkg_resources.get_distribution(module)
-    except pkg_resources.DistributionNotFound as e:
-        logging.debug(e)
+        dist = pkg_resources.get_distribution(module_name)
+    except pkg_resources.DistributionNotFound as error:
+        logging.debug(f"{type(error)}: {error}\nparams:\nmodule={module_name}")
         return None
 
     # find VCS info
@@ -70,69 +83,108 @@ def get_metadata(module: str) -> tp.Optional[str]:
         FileNotFoundError,
         json.decoder.JSONDecodeError,
         KeyError,
-    ) as e:
-        logging.debug(e)
+    ) as error:
+        logging.debug(f"{type(error)}: {error}\nparams:\nmodule={module_name}")
 
     # find distribution pypi info
     try:
         return f"{dist.project_name}=={dist.version}"
-    except AttributeError as e:
-        logging.debug(e)
+    except AttributeError as error:
+        logging.debug(f"{type(error)}: {error}\nparams:\nmodule={module_name}")
     return None
 
 
-def get_location(module: str, inside_dir: str | Path) -> tp.Optional[str]:
+def get_location(
+        module_name: str,
+        inside_dir: str | Path,
+) -> tp.Optional[str]:
     """Get module location.
 
-    :param module: str, Module string used to import it in a script.
-    :param inside_dir: str | Path, Directory inside which the script importing module lies.
-    :return: str | None, Path to the module being imported.
+    :param module_name: Module name.
+    :type module_name: str
+    :param inside_dir: Parent directory of a script that is importing the module.
+    :type inside_dir: str | :py:class:`pathlib.Path`
+
+    :return: Location of the module.
+    :rtype: str, optional
     """
     directory = Path(inside_dir).absolute()
-    project_root_directory = Path(directory.root)
-    try:
-        package_path = ".".join(list(directory.absolute().relative_to(project_root_directory.absolute()).parts))
-    except ValueError as error:
-        logging.debug(error)
-        return None
-    try:
-        if not module.startswith("."):
+    if not module_name.startswith("."):
+        try:
             with ChangeDir(directory):
                 spec = importlib.util.find_spec(
-                    module
+                    module_name
                 )
-        else:
-            with ChangeDir(project_root_directory):
-                spec = importlib.util.find_spec(
-                    module,
-                    package_path
-                )
-    except ModuleNotFoundError as error:
-        logging.debug(error)
-        return None
 
-    if spec is None:
+                if spec is None:
+                    return None
+                return spec.origin
+        except ModuleNotFoundError as error:
+            logging.debug(f"{type(error)}: {error}"
+                          f"\nparams:\nmodule={module_name}\ninside_dir={inside_dir}")
+            return None
+    else:
+        found_non_empty = False
+        dot_split = module_name[1:].split(".")
+        for string in dot_split[:-1]:
+            if found_non_empty and string == "":
+                logging.warning(f"Using double dots after module name is not allowed: {module_name}")
+                return None
+            if string == "":
+                if directory == directory.root:
+                    logging.warning(f"Importing {module_name} inside {inside_dir} "
+                                    f"refers to a file outside {directory.root}.")
+                    return None
+                directory = directory.parent
+            else:
+                found_non_empty = True
+                directory = directory / string
+        file1 = directory / (dot_split[-1] + ".py")
+        file2 = directory / dot_split[-1] / "__init__.py"
+        if file1.exists() and file2.exists():
+            logging.warning(f"Found two files with the same name: {file1}; {file2}")
+        if file1.exists():
+            return str(file1.absolute())
+        if file2.exists():
+            return str(file2.absolute())
         return None
-    return spec.origin
 
 
 def get_module_info(
-    module_name: str,
-    inside_dir: Path,
-    project_root_dir: Path
-) -> tp.Tuple[ModuleType, ModuleMetadata]:
-    """Return information about module."""
-    parent_module = module_name.split('.')[0]
+        module_name: str,
+        inside_dir: str | Path,
+        project_root_dir: str | Path | None = None
+) -> tp.Tuple[ModuleType, str]:
+    """Get information about module.
 
-    package_metadata = get_metadata(parent_module)
-    if package_metadata is not None:
-        return ModuleType.PYPI, package_metadata
+    :param module_name: Name of the module.
+    :type module_name: str
+    :param inside_dir: Parent directory of the script that imports the module.
+    :type inside_dir: str | :py:class:`pathlib.Path`
+    :param project_root_dir: Root directory of the project. Defaults to None.
+    :type project_root_dir: str | :py:class:`pathlib.Path`, optional
 
-    if parent_module in sys.modules:
-        return ModuleType.SYSTEM, parent_module
+    :raises ModuleNotFoundParserError: If the module is not found with the specified params.
 
+    :return: A tuple of two elements. The first one is a :py:class:`ModuleType` instance. The second one is:
+
+        - result of :py:func:`get_metadata` if the first element is :py:attr:`ModuleType.PYPI`.
+        - name of the root module if the first element is :py:attr:`ModuleType.SYSTEM`.
+        - result of :py:func:`get_location` if the first element is :py:attr:`ModuleType.LOCAL`.
+    :rtype: tuple[:py:class:`ModuleType`, str]
+    """
+    root_module = module_name.split('.')[0]
     location = get_location(module_name, inside_dir)
-    if location:
-        return ModuleType.LOCAL, str(Path(location).absolute())
 
-    raise ModuleNotFoundParserError(f"Not found {module_name} in {inside_dir}.")
+    if location is None:
+        raise ModuleNotFoundParserError(f"Not found {module_name} in {inside_dir}. Project root: {project_root_dir}")
+
+    if root_module != "":
+        package_metadata = get_metadata(root_module)
+        if package_metadata is not None:
+            return ModuleType.PIP, package_metadata
+
+        if root_module in sys.stdlib_module_names:
+            return ModuleType.SYSTEM, root_module
+
+    return ModuleType.LOCAL, str(Path(location).absolute())

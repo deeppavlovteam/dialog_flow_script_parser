@@ -7,14 +7,13 @@ import libcst as cst
 from df_engine.core.actor import Actor
 
 from df_script_parser.processors.dict_processors import NodeProcessor
-from df_script_parser.dumpers_loaders import Python
 from df_script_parser.utils.exceptions import WrongFileStructure, StarredError
 from df_script_parser.utils.convenience_functions import evaluate
 from df_script_parser.utils.namespaces import Namespace
 
 
 # Match nodes with Actor calls e.g. `a = Actor(args)` or `b = df_engine.core.Actor(args)`
-actor_call_matcher = m.Call(func=m.OneOf(m.Name("Actor"), m.Attribute(attr=m.Name("Actor"))))
+actor_call_matcher = m.Call()
 
 actor_matcher = m.OneOf(m.Assign(value=actor_call_matcher), m.AnnAssign(value=actor_call_matcher))
 
@@ -44,18 +43,26 @@ class Parser(m.MatcherDecoratableTransformer):
 
     @m.call_if_not_inside(m.Dict())
     @m.leave(actor_matcher)
-    def parse_actor_args(self, node: tp.Union[cst.Assign, cst.AnnAssign], *args) -> cst.RemovalSentinel:
+    def parse_actor_args(
+            self,
+            original_node: tp.Union[cst.Assign, cst.AnnAssign],
+            updated_node: tp.Union[cst.Assign, cst.AnnAssign]
+    ) -> tp.Union[cst.RemovalSentinel, cst.Assign, cst.AnnAssign]:
         """Parse arguments of calls to df_engine.core.Actor. Store them in self.args."""
-        if self.args:
-            raise WrongFileStructure("Only one Actor call is allowed.")
-        actor_arg_order = Actor.__init__.__wrapped__.__code__.co_varnames[1:]
-        for arg, keyword in zip(cst.ensure_type(node.value, cst.Call).args, actor_arg_order):
-            if arg.keyword is not None:
-                keyword = evaluate(arg.keyword)
-            self.node_processor.parse_tuples = True
-            self.args[keyword] = self.node_processor(arg.value)
-            logging.info(f"Found arg {keyword} = {self.args[keyword]}")
-        return cst.RemoveFromParent()
+        if self.namespace.get_absolute_name(
+                evaluate(cst.ensure_type(original_node.value, cst.Call).func)
+        ) in ["df_engine.core.actor.Actor", "df_engine.core.Actor"]:
+            if self.args:
+                raise WrongFileStructure("Only one Actor call is allowed.")
+            actor_arg_order = Actor.__init__.__wrapped__.__code__.co_varnames[1:]
+            for arg, keyword in zip(cst.ensure_type(original_node.value, cst.Call).args, actor_arg_order):
+                if arg.keyword is not None:
+                    keyword = evaluate(arg.keyword)
+                self.node_processor.parse_tuples = True
+                self.args[keyword] = self.node_processor(arg.value)
+                logging.info(f"Found arg {keyword} = {self.args[keyword]}")
+            return cst.RemoveFromParent()
+        return updated_node
 
     @m.leave(m.Import() | m.ImportFrom())
     def add_import_to_structure(self, node: tp.Union[cst.Import, cst.ImportFrom], *args) -> cst.RemovalSentinel:

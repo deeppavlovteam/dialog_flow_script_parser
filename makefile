@@ -51,7 +51,7 @@ test: venv
 test_all: venv test lint
 .PHONY: test_all
 
-doc: venv
+doc:
 	$(VENV_PATH)/bin/sphinx-apidoc -e -f -o docs/source/apiref df_script_parser
 	$(VENV_PATH)/bin/sphinx-build -M clean docs/source docs/build
 	$(VENV_PATH)/bin/sphinx-build -M html docs/source docs/build

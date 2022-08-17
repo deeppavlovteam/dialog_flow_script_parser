@@ -8,8 +8,6 @@ Submodules
    :maxdepth: 4
 
    df_script_parser.processors.dict_processors
-   df_script_parser.processors.file
-   df_script_parser.processors.import_block
    df_script_parser.processors.parse
    df_script_parser.processors.recursive_parser
 

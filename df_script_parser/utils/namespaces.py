@@ -8,23 +8,25 @@ import libcst as cst
 
 from df_script_parser.utils.code_wrappers import Python, StringTag, String
 from df_script_parser.utils.convenience_functions import get_module_name
-from df_script_parser.utils.module_metadata import ModuleType, ModuleMetadata, get_module_info
-from df_script_parser.utils.exceptions import ObjectNotFound, ResolutionError, RequestParsingError
+from df_script_parser.utils.module_metadata import ModuleType, get_module_info
+from df_script_parser.utils.exceptions import ObjectNotFoundError, ResolutionError, RequestParsingError
 from df_script_parser.utils.convenience_functions import evaluate
 
 
-class Import(StringTag):
+class Import(Python):
     yaml_tag = "!import"
 
+    def __init__(self, module):
+        super().__init__(module, show_yaml_tag=True)
 
-class From(Import):
+
+class From(Python):
     yaml_tag = "!from"
 
     def __init__(self, module_name: str, obj: str):
-        super().__init__(module_name + " " + obj)
+        super().__init__(module_name + " " + obj, f"{module_name}.{obj}", True)
         self.module_name = module_name
         self.obj = obj
-        self.absolute_name = f"{module_name}.{obj}"
 
     @classmethod
     def from_yaml(cls, constructor: Constructor, node: "StringTag"):
@@ -32,8 +34,15 @@ class From(Import):
         return cls(split[0], split[1])
 
 
+class AltName(Python):
+    pass
+
+
 class NamespaceTag(StringTag):
     yaml_tag = "!namespace"
+
+    def __init__(self, value: str, show_yaml_tag: bool = False):
+        super().__init__(value, show_yaml_tag)
 
     def __hash__(self):
         return hash(self.value)
@@ -42,11 +51,6 @@ class NamespaceTag(StringTag):
         if isinstance(other, NamespaceTag):
             return self.value == other.value
         return False
-
-
-class RootNamespaceTag(NamespaceTag):
-    """This class is unnecessary but previously thought to be necessary. To be removed."""
-    yaml_tag = "!root"
 
 
 class Request:
@@ -63,12 +67,17 @@ class Request:
         1
     ]
     """
-    def __init__(self, node: cst.CSTNode, namespace: tp.Optional['Namespace'] = None):
+    def __init__(
+            self,
+            node: cst.CSTNode,
+            get_absolute_attributes: tp.Optional[tp.Callable[[tp.List[Python]], tp.List[Python]]] = None
+    ):
         self.attributes: tp.List[Python] = []
         self.indices: tp.List['Request' | Python | String] = []
+        self.get_absolute_attributes = get_absolute_attributes
         self._process_node(node)
-        if namespace:
-            self.attributes = namespace._get_absolute_name(self.attributes)
+        if get_absolute_attributes:
+            self.attributes = get_absolute_attributes(self.attributes)
 
     def _process_node(self, node: cst.CSTNode):
         if isinstance(node, cst.Subscript):
@@ -88,7 +97,7 @@ class Request:
         if not isinstance(index, cst.Index):
             raise RequestParsingError(f"Slice {evaluate(index)} is not an index.")
         try:
-            self.indices.insert(0, Request(index.value))
+            self.indices.insert(0, Request(index.value, self.get_absolute_attributes))
         except RequestParsingError:
             if isinstance(index.value, cst.SimpleString):
                 self.indices.insert(0, String(index.value.evaluated_value))
@@ -104,8 +113,12 @@ class Request:
         self.attributes.append(Python(node.value))
 
     @classmethod
-    def from_str(cls, request: str, namespace: tp.Optional['Namespace'] = None):
-        return cls(cst.parse_expression(request), namespace)
+    def from_str(
+            cls,
+            request: str,
+            get_absolute_attributes: tp.Optional[tp.Callable[[tp.List[Python]], tp.List[Python]]] = None
+    ):
+        return cls(cst.parse_expression(request), get_absolute_attributes)
 
     def __repr__(self):
         return "".join([
@@ -122,7 +135,7 @@ class Namespace:
             self,
             path: Path,
             project_root_dir: Path,
-            import_module_hook: tp.Callable[[ModuleType, ModuleMetadata], None],
+            import_module_hook: tp.Callable[[ModuleType, str], None],
     ):
         """
 
@@ -133,7 +146,7 @@ class Namespace:
         self.path = Path(path)
         self.project_root_dir = Path(project_root_dir)
         self.name: str = get_module_name(self.path, self.project_root_dir)
-        self.names: tp.Dict[Python, Import | From | Python | dict] = {}  # ToDo: use dict that raises when key modified
+        self.names: tp.Dict[Python, Import | From | Python | dict] = {}
         self.import_module_hook = import_module_hook
 
     def __iter__(self):
@@ -202,9 +215,9 @@ class Namespace:
         :param str alias: The alternative name
         :return: None?
         """
-        if Python(obj) not in self.names:
-            raise ObjectNotFound(f"Not found {obj} in {self.names}")
-        self.names[Python(alias)] = Python(obj)
+        if Python(obj) not in self:
+            raise ObjectNotFoundError(f"Not found {obj} in {self.names}")
+        self.names[Python(alias)] = AltName(obj)
 
     def add_dict(
             self,
@@ -232,11 +245,11 @@ class Namespace:
         :return:
         """
         try:
-            return repr(Request.from_str(name, self))
+            return repr(Request.from_str(name, self.get_absolute_name_list))
         except ResolutionError:
             return None
 
-    def _get_absolute_name(self, names: tp.List[Python]) -> tp.List[Python]:
+    def get_absolute_name_list(self, names: tp.List[Python]) -> tp.List[Python]:
         """Modify parsed cst.Attribute or cst.Name to be namespace-independent.
 
         :param names:
@@ -246,10 +259,10 @@ class Namespace:
         for item in names:
             stack.append(item)
             name = Python(".".join(map(repr, stack)))
-            if name in self.names:
+            if name in self:
                 obj = self.names[name]
                 names_left = names[len(stack):]
-                while isinstance(obj, Python):
+                while isinstance(obj, AltName):
                     name = obj
                     obj = self.names[name]
                 if isinstance(obj, From):
@@ -262,4 +275,4 @@ class Namespace:
                             f"Attempted access to an attribute {'.'.join(map(repr, names_left))} of a dict {obj}"
                         )
                     return list(map(Python, self.name.split("."))) + [name]
-        raise ObjectNotFound(f"Not found object {'.'.join(map(repr, names))} in {self.names}")
+        raise ObjectNotFoundError(f"Not found object {'.'.join(map(repr, names))} in {self.names}")

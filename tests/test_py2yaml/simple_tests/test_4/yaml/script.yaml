@@ -1,0 +1,13 @@
+requirements:
+- df-engine==0.9.0
+script: main.script
+start label:
+- !py df_engine.core.keywords.GLOBAL
+- !py df_engine.core.keywords.RESPONSE
+namespaces:
+  main:
+    Actor: !from df_engine.core.actor Actor
+    keywords: !from df_engine.core keywords
+    script:
+      keywords.GLOBAL:
+        keywords.RESPONSE: !str

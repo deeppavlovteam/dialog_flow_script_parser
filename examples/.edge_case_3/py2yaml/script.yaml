@@ -1,6 +1,0 @@
-imports:
-  system: {}
-  pypi: {}
-  local: {}
-script:
-  '1': '2'
