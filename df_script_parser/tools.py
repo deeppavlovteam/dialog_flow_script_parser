@@ -10,7 +10,7 @@
 # from df_script_parser.utils.convenience_functions import evaluate
 # from df_script_parser.processors.dict_processors import NodeProcessor
 # from df_script_parser.dumpers_loaders import yaml_dumper_loader, Python
-# from df_script_parser.utils.exceptions import WrongFileStructure
+# from df_script_parser.utils.exceptions import WrongFileStructureError
 
 
 # def py2yaml_str(
@@ -27,7 +27,7 @@
 #     remaining_file = evaluate(parsed_file.visit(transformer))
 #
 #     if re.fullmatch(r"[ \t\n\r]*", remaining_file) is None:
-#         raise WrongFileStructure(
+#         raise WrongFileStructureError(
 #             f"File must contain only imports, dict declarations and Actor calls. Found:\n{remaining_file}"
 #         )
 #

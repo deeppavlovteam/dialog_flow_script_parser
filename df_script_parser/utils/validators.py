@@ -1,7 +1,4 @@
-"""This file contains two functions that make sure parsed files are correct:
-
-1. `check_file_structure` is used to check that file does not have any unsupported nodes
-2. `validate_path` is used to check that keys inside the script have correct types
+"""This module contains functions that make sure parsed files are correct
 """
 import re
 import typing as tp
@@ -9,10 +6,9 @@ import typing as tp
 import libcst as cst
 from df_engine.core.keywords import Keywords
 
-from df_script_parser.utils.convenience_functions import evaluate
-from df_script_parser.utils.exceptions import WrongFileStructure, ScriptValidationError
 from df_script_parser.utils.code_wrappers import Python, String
-
+from df_script_parser.utils.convenience_functions import evaluate
+from df_script_parser.utils.exceptions import WrongFileStructureError, ScriptValidationError
 
 keywords_dict = {k: [
     Python(k, "df_engine.core.keywords." + k),
@@ -28,20 +24,25 @@ keywords_list = list(map(
 ))
 
 
-def check_file_structure(node: cst.CSTNode) -> None:
+def check_file_structure(
+        node: cst.CSTNode,
+) -> None:
     """Check that node is empty.
 
-    The `df_script_parser.processors.parse.Parse` used to parse files removes supported nodes it encounters.
-    This function makes sure that there are no unsupported nodes in a file by checking that the resulting node is empty.
+    The `df_script_parser.processors.parse.Parse` removes supported nodes.
+    This function makes sure that there are no unsupported nodes in a file by checking that the resulting node is empty
 
-    :param CSTNode node: Node to check
-    :raise WrongFileStructureError: If the node is not empty. Message includes the first unsupported line of code.
+    :param node: Node to check
+    :type node: :py:class:`libcst.CSTNode`
+
+    :raise :py:exc:`df_script_parser.utils.exceptions.WrongFileStructureError`:
+        If the node is not empty. Message includes the first unsupported line of code.
     """
     remaining_file = evaluate(node)
 
     if re.fullmatch(r"[ \t\n\r]*", remaining_file) is None:
         first_non_empty_line = next(line for line in remaining_file.split("\n") if line)
-        raise WrongFileStructure(
+        raise WrongFileStructureError(
             f"""File must contain only imports, dict declarations and Actor calls.
             The first line of other type found: {first_non_empty_line}"""
         )
@@ -49,13 +50,34 @@ def check_file_structure(node: cst.CSTNode) -> None:
 
 def validate_path(
         traversed_path: tp.List[Python | String],
-        final_value: tp.Optional[Python | String] = None
+        final_value: tp.Optional[Python | String] = None,
 ) -> None:
     """Validate a sequence of keys in a script.
 
-    :param traversed_path:
-    :param final_value:
-    :return:
+    When a script tree is traversed during checking in
+    :py:meth:`df_script_parser.processors.recursive_parser.RecursiveParser.traverse_dict`
+    this function is called at the leaf nodes
+
+    :param traversed_path: Sequence of tree nodes visited before the leaf node
+    :type traversed_path:
+        list[
+        :py:class:`df_script_parser.utils.code_wrappers.Python`,
+        :py:class:`df_script_parser.utils.code_wrappers.String`
+        ]
+    :param final_value: Value of the leaf node, defaults to None
+    :type final_value:
+        :py:class:`df_script_parser.utils.code_wrappers.Python`
+        |
+        :py:class:`df_script_parser.utils.code_wrappers.String`,
+        optional
+
+    :raises :py:exc:`df_script_parser.utils.exceptions.ScriptValidationError`:
+
+        - If ``traversed_path`` is empty
+        - If the first element of ``traversed_path`` is :py:obj:`df_engine.core.keywords.GLOBAL` but the second
+          element does not exist or is not in :py:mod:`df_engine.core.keywords`
+        - If the first element of ``traversed_path`` is not :py:obj:`df_engine.core.keywords.GLOBAL` but the third
+          element does not exist or is not in :py:mod:`df_engine.core.keywords`
     """
     if len(traversed_path) < 1:
         raise ScriptValidationError(f"No keys in a traversed path.\n"

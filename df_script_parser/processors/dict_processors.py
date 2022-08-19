@@ -1,30 +1,30 @@
 """Processors for dicts.
-The goal of these processors is to take a dictionary
-and replace all the keys and values that are not dicts, lists or tuples with StringTag instances."""
-import logging
-import typing as tp
+The purpose of these processors is to take a dictionary
+and replace all the keys and values that are not dicts, lists or tuples with StringTag instances.
+"""
 import re
-from os import devnull
+import typing as tp
 from collections import OrderedDict
+from os import devnull
 
 import libcst as cst
 from pyflakes.api import check
 from pyflakes.reporter import Reporter
 
-from df_script_parser.utils.namespaces import Namespace
-from df_script_parser.utils.exceptions import StarredError
-from df_script_parser.utils.convenience_functions import evaluate
 from df_script_parser.utils.code_wrappers import (
     String,
     Python,
 )
+from df_script_parser.utils.convenience_functions import evaluate
+from df_script_parser.utils.exceptions import StarredError
+from df_script_parser.utils.namespaces import Namespace
 
 
 class NodeProcessor:
     def __init__(
-        self,
-        namespace: Namespace,
-        parse_tuples: bool = False,
+            self,
+            namespace: Namespace,
+            parse_tuples: bool = False,
     ):
         """Process cst.Dict. Return a python object.
 
@@ -85,7 +85,7 @@ class NodeProcessor:
             if is_correct(self.namespace, value):
                 return String(value)
             else:
-                return String(value, add_tag=False)
+                return String(value, show_yaml_tag=False)
 
         value = re.sub(r"\n[ \t]*", "", evaluate(node))
 

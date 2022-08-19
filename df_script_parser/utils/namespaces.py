@@ -1,30 +1,58 @@
-"""Classes representing python module imported in a py script."""
-# ToDo: docs
+"""This module contains a class that represents a namespace (list of objects inside a file) as well as some functions
+and classes to support it.
+"""
 import typing as tp
 from pathlib import Path
 
-from ruamel.yaml.constructor import Constructor
 import libcst as cst
+from ruamel.yaml.constructor import Constructor
 
 from df_script_parser.utils.code_wrappers import Python, StringTag, String
-from df_script_parser.utils.convenience_functions import get_module_name
-from df_script_parser.utils.module_metadata import ModuleType, get_module_info
-from df_script_parser.utils.exceptions import ObjectNotFoundError, ResolutionError, RequestParsingError
 from df_script_parser.utils.convenience_functions import evaluate
+from df_script_parser.utils.convenience_functions import get_module_name
+from df_script_parser.utils.exceptions import ObjectNotFoundError, ResolutionError, RequestParsingError
+from df_script_parser.utils.module_metadata import ModuleType, get_module_info
 
 
 class Import(Python):
+    """This class is used to represent an object that is an imported module.
+
+    - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.show_yaml_tag` is set to True
+    - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.display_absolute_value` is set to False
+
+    :param module: Name of the module being imported
+    :type module: str
+    """
     yaml_tag = "!import"
 
     def __init__(self, module):
-        super().__init__(module, show_yaml_tag=True)
+        super().__init__(module, show_yaml_tag=True, display_absolute_value=False)
 
 
 class From(Python):
+    """This class is used to represent an object that refers to an object from another module.
+
+    - Concatenation of ``module_name`` and ``obj`` using a whitespace is treated as
+      :py:attr:`df_script_parser.utils.code_wrappers.StringTag.display_value`
+    - Concatenation of ``module_name`` and ``obj`` using a dot is treated as
+      :py:attr:`df_script_parser.utils.code_wrappers.StringTag.absolute_value`
+    - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.show_yaml_tag` is set to True
+    - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.display_absolute_value` is set to False
+
+    :param module_name: Name of the module from which the object is imported
+    :type module_name: str
+    :param obj: Object being imported
+    :type obj: str
+    """
     yaml_tag = "!from"
 
     def __init__(self, module_name: str, obj: str):
-        super().__init__(module_name + " " + obj, f"{module_name}.{obj}", True)
+        super().__init__(
+            module_name + " " + obj,
+            f"{module_name}.{obj}",
+            show_yaml_tag=True,
+            display_absolute_value=False
+        )
         self.module_name = module_name
         self.obj = obj
 
@@ -35,37 +63,44 @@ class From(Python):
 
 
 class AltName(Python):
-    pass
+    """This class is used to represent an object that refers to another object in the namespace.
+    """
 
 
 class NamespaceTag(StringTag):
+    """This class is used to store a name of a namespace.
+
+    - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.show_yaml_tag` is set to False by default
+    """
     yaml_tag = "!namespace"
 
     def __init__(self, value: str, show_yaml_tag: bool = False):
         super().__init__(value, show_yaml_tag)
 
     def __hash__(self):
-        return hash(self.value)
+        return hash(self.absolute_value)
 
     def __eq__(self, other):
         if isinstance(other, NamespaceTag):
-            return self.value == other.value
+            return self.absolute_value == other.absolute_value
         return False
 
 
 class Request:
-    """Parses a CSTNode as attribute and dictionary requests.
+    """Represents a request to an object
 
-    EXAMPLE
-    -------
-    a.b.c[d.e.f[2]]['h'][1] ->
+    - :py:attr:`Request.attributes` is used to store module name and object name separated by a dot
+    - :py:attr:`Request.indices` is used to store a sequence of keys if requested object is an element of a dict
 
-    self.attributes = [a, b, c]
-    self.indices = [
-        Request(attributes=[d, e, f], indices=[2]),
-        'h',
-        1
-    ]
+    :param node: Parsed request
+    :type node: :py:class:`libcst.CSTNode`
+    :param get_absolute_attributes: :py:meth:`Namespace.get_absolute_name_list`
+        that is used to get an absolute location of an object
+    :type get_absolute_attributes: Callable[[list[:py:class:`df_script_parser.utils.code_wrappers.Python`]],
+        list[:py:class:`df_script_parser.utils.code_wrappers.Python`]], optional
+
+    :raise :py:exc:`df_script_parser.utils.exceptions.RequestParsingError`:
+        If a node cannot be represented as a request
     """
     def __init__(
             self,
@@ -80,6 +115,14 @@ class Request:
             self.attributes = get_absolute_attributes(self.attributes)
 
     def _process_node(self, node: cst.CSTNode):
+        """Recursively parse a node, fill :py:attr:`Request.attributes` and :py:attr:`Request.indices`
+
+        :param node: Node to parse
+        :type node: :py:class:`libcst.CSTNode`
+
+        :raise :py:exc:`df_script_parser.utils.exceptions.RequestParsingError`:
+            If a node cannot be represented as a request
+        """
         if isinstance(node, cst.Subscript):
             self._process_subscript(node)
         elif isinstance(node, cst.Attribute):
@@ -91,6 +134,14 @@ class Request:
             raise RequestParsingError(f"Node {evaluate(node)} is not a subscript, attribute or name.")
 
     def _process_subscript(self, node: cst.Subscript):
+        """Recursively parse a node that is a Subscript
+
+        :param node: Node to parse
+        :type node: :py:class:`libcst.Subscript`
+
+        :raise :py:exc:`df_script_parser.utils.exceptions.RequestParsingError`:
+            If a node cannot be represented as a request
+        """
         if len(node.slice) != 1:
             raise RequestParsingError(f"Subscript {evaluate(node)} has multiple slices.")
         index = node.slice[0].slice
@@ -106,10 +157,23 @@ class Request:
         self._process_node(node.value)
 
     def _process_attribute(self, node: cst.Attribute):
+        """Recursively parse a node that is an Attribute
+
+        :param node: Node to parse
+        :type node: :py:class:`libcst.Attribute`
+
+        :raise :py:exc:`df_script_parser.utils.exceptions.RequestParsingError`:
+            If a node cannot be represented as a request
+        """
         self._process_node(node.value)
         self._process_node(node.attr)
 
     def _process_name(self, node: cst.Name):
+        """Parse a node that is a Name
+
+        :param node: Node to parse
+        :type node: :py:class:`libcst.Name`
+        """
         self.attributes.append(Python(node.value))
 
     @classmethod
@@ -118,6 +182,20 @@ class Request:
             request: str,
             get_absolute_attributes: tp.Optional[tp.Callable[[tp.List[Python]], tp.List[Python]]] = None
     ):
+        """Construct the request class using a string
+
+        :param request: String representing a request
+        :type request: str
+        :param get_absolute_attributes: :py:meth:`Namespace.get_absolute_name_list`
+            that is used to get an absolute location of an object
+        :type get_absolute_attributes: Callable[[list[:py:class:`df_script_parser.utils.code_wrappers.Python`]],
+            list[:py:class:`df_script_parser.utils.code_wrappers.Python`]], optional
+
+        :raise :py:exc:`df_script_parser.utils.exceptions.RequestParsingError`:
+            If a string cannot be represented as a request
+
+        :return: Instance of :py:class:`Request` class
+        """
         return cls(cst.parse_expression(request), get_absolute_attributes)
 
     def __repr__(self):
@@ -130,19 +208,22 @@ class Request:
 
 
 class Namespace:
-    """Collection of names with name resolution."""
+    """This class represents a namespace an all the objects inside it
+
+    :param path: Path to the file containing objects
+    :type path: :py:class:`pathlib.Path`
+    :param project_root_dir: Root dir of the project, used to get a relative name of the file
+    :type project_root_dir: :py:class:`pathlib.Path`
+    :param import_module_hook: Function that is being called when an import is added to the namespace
+    :type import_module_hook: Callable[[:py:class:`df_script_parser.utils.module_metadata.ModuleType`, str], None]
+    """
+
     def __init__(
             self,
             path: Path,
             project_root_dir: Path,
             import_module_hook: tp.Callable[[ModuleType, str], None],
     ):
-        """
-
-        :param Path path: Path to the python file the namespace of which is being collected.
-        :param project_root_dir:
-        :param import_module_hook:
-        """
         self.path = Path(path)
         self.project_root_dir = Path(project_root_dir)
         self.name: str = get_module_name(self.path, self.project_root_dir)
@@ -157,13 +238,19 @@ class Namespace:
             self,
             module_name: str,
     ) -> str:
-        """Fire the import_module_hook, return alternative import name for local modules
+        """Call ``import_module_hook``, return absolute import name for
+        :py:attr:`df_script_parser.utils.module_metadata.ModuleType.LOCAL` modules
 
-        :param str module_name: Module name as in the file
-        :return: module_name if module_type is PYPI or SYSTEM else module name is the result of :func:`get_module_name`
+        :param module_name: Module name
+        :type module_name: str
+        :return: Module name
+
+            - ``module_name`` for :py:attr:`df_script_parser.utils.module_metadata.ModuleType.PIP` and
+              :py:attr:`df_script_parser.utils.module_metadata.ModuleType.SYSTEM`
+            - Absolute name for :py:attr:`df_script_parser.utils.module_metadata.ModuleType.LOCAL`
         :rtype: str
         """
-        module_type, module_metadata = get_module_info(module_name, self.path.parent, self.project_root_dir)
+        module_type, module_metadata = get_module_info(module_name, self.path.parent)
         self.import_module_hook(module_type, module_metadata)
 
         return get_module_name(
@@ -177,8 +264,10 @@ class Namespace:
     ) -> None:
         """Add import to the namespace
 
-        :param module_name: str, String used to import a module
-        :param alias: str | None, Alias under which the module is imported
+        :param module_name: String used to import a module
+        :type module_name: str
+        :param alias: Alias under which the module is imported
+        :type alias: str, optional
         :return: None
         """
         import_object = Import(self.process_module_import(module_name))
@@ -192,11 +281,14 @@ class Namespace:
             obj: str,
             alias: str | None = None,
     ) -> None:
-        """Add a from-import to the namespace.
+        """Add a from-import to the namespace
 
-        :param module_name: str, Name of the module from which the object is imported
-        :param obj: str, Name of the object
-        :param alias: str | None, Alias under which the object is imported
+        :param module_name: Name of the module from which the object is imported
+        :type module_name: str
+        :param obj: Name of the object
+        :type obj: str
+        :param alias: Alias under which the object is imported
+        :type alias: str, optional
         :return: None
         """
         import_object = From(self.process_module_import(module_name), obj)
@@ -209,10 +301,12 @@ class Namespace:
             obj: str,
             alias: str,
     ) -> None:
-        """Add an alternative name to the object in the namespace.
+        """Add an alternative name to the object in the namespace
 
-        :param str obj: Object to which the alternative name is bound
-        :param str alias: The alternative name
+        :param obj: Object to which the alternative name is bound
+        :type obj: str
+        :param alias: The alternative name
+        :type alias: str
         :return: None?
         """
         if Python(obj) not in self:
@@ -224,25 +318,23 @@ class Namespace:
             name: str,
             dictionary: dict
     ) -> None:
-        """Add a dictionary to the namespace.
+        """Add a dictionary to the namespace
 
-        :param str name: Dictionary name
-        :param dict dictionary: Dictionary contents
+        :param name: Dictionary name
+        :type name: str
+        :param dictionary: Dictionary contents
+        :type dictionary: dict
         :return:
         """
         self.names[Python(name)] = dictionary
 
     def get_absolute_name(self, name: str) -> str | None:
-        """Make a name namespace-independent.
+        """Get an absolute variant of a name
 
-        EXAMPLE
-        -------
-        Namespace = 'from Keywords import GLOBAL as gl'
-
-        get_absolute_name(gl, namespace) = 'Keywords.GLOBAL'
-
-        :param name:
-        :return:
+        :param name: Name of a local object
+        :type name: str
+        :return: Absolute name of the object if possible. None otherwise
+        :rtype: str, optional
         """
         try:
             return repr(Request.from_str(name, self.get_absolute_name_list))
@@ -250,10 +342,15 @@ class Namespace:
             return None
 
     def get_absolute_name_list(self, names: tp.List[Python]) -> tp.List[Python]:
-        """Modify parsed cst.Attribute or cst.Name to be namespace-independent.
+        """Make an object name absolute
 
-        :param names:
-        :return:
+        For example, namespace with added ``import df_engine.core.keywords as kw`` will return
+        ``[df_engine, core, keywords, GLOBAL]`` if this method is called with ``[kw, GLOBAL]``
+
+        :param names: List of module and object names
+        :type names: list[:py:class:`df_script_parser.utils.code_wrappers.Python`]
+        :return: Absolute name of the object
+        :rtype: list[:py:class:`df_script_parser.utils.code_wrappers.Python`]
         """
         stack = []
         for item in names:
@@ -268,7 +365,7 @@ class Namespace:
                 if isinstance(obj, From):
                     return list(map(Python, obj.module_name.split(".") + obj.obj.split("."))) + names_left
                 if isinstance(obj, Import):
-                    return list(map(Python, obj.value.split("."))) + names_left
+                    return list(map(Python, obj.absolute_value.split("."))) + names_left
                 if isinstance(obj, dict):
                     if len(stack) != len(names):
                         raise ResolutionError(

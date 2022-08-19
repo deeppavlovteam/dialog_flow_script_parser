@@ -1,4 +1,4 @@
-"""This module contains different exceptions that might be raised during parsing.
+"""This module contains different exceptions that might be raised during parsing
 """
 
 
@@ -7,7 +7,7 @@ class ParserError(Exception):
     """
 
 
-class WrongFileStructure(ParserError):  # ToDo: link to the file \w file format rules.
+class WrongFileStructureError(ParserError):
     """Raised when a file cannot be parsed due to having elements that are not supported by the parser.
     """
 
@@ -46,7 +46,7 @@ class RequestParsingError(ResolutionError):
 
 
 class ScriptValidationError(ParserError):
-    """Raised when :py:class:`df_engine.core.actor.Actor` is either not initialized or initialized incorrectly.
+    """Raised when :py:class:`df_engine.core.actor.Actor` is initialized incorrectly.
     """
 
 

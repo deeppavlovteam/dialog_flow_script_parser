@@ -1,16 +1,18 @@
-"""Frequently used short functions."""
-import typing as tp
+"""This module contains functions that don't serve any particular purpose
+"""
 import re
 from pathlib import Path
 
 import libcst as cst
 
 
-def evaluate(node: tp.Union[cst.CSTNode, tp.AnyStr]) -> str:
-    """Return string representation of a `libcst.Node`.
+def evaluate(node: cst.CSTNode | str) -> str:
+    """Get string representation of :py:class:`libcst.CSTNode`
 
-    :param node: libcst.Node, Node to evaluate.
-    :return: str, string representing node.
+    :param node: Node to evaluate.
+    :type node: :py:class:`libcst.CSTNode` | str
+    :return: String representing node
+    :rtype: str
     """
     if isinstance(node, str):
         return node
@@ -18,34 +20,34 @@ def evaluate(node: tp.Union[cst.CSTNode, tp.AnyStr]) -> str:
 
 
 def enquote_string(string: str) -> str:
-    """Enquote a string.
+    """Enquote a string
 
-    Return a string with all `\n`, ` ` and `\t` deleted.
+    Return a string with all newlines, whitespaces and tabulations deleted.
     Escape single quotes inside the string.
-    Wrap the string in single quotes.
+    Wrap the string in single quotes
 
-    :param string: str, String to enquote.
-    :return: Enquoted string.
+    :param string: String to enquote
+    :type string: str
+    :return: Enquoted string
+    :rtype: str
     """
     return "'" + re.sub(r"\n[ \t]*", "", string).replace("'", r"\'") + "'"
 
 
 def get_module_name(path: Path, project_root_dir: Path) -> str:
-    """Get python import string for the file path inside the project_root_dir.
+    """Get a string that would be used to import a file inside a directory
 
-    EXAMPLE
-    =======
-    dir
-    +-- file.py
-    +-- package
-    +--+-- __init__.py
-    +--+-- file.py
-
-    get_module_name("dir/file.py", "dir") = "file"
-    get_module_name("dir/package/__init__.py", "dir") = "package"
-    get_module_name("dir/package/file.py", "dir") = "package.file"
-    get_module_name("dir/package/__init__.py", "dir/package") = "package"
-    get_module_name("dir/package/file.py", "dir/package") = "package.file"
+    :param path: File that would be imported
+    :type path: :py:class:`pathlib.Path`
+    :param project_root_dir: Directory inside which the import would happen
+        If ``project_root_dir`` contains __init__.py then parent directory of ``project_root_dir`` is used instead
+    :type project_root_dir: :py:class:`pathlib.Path`
+    :return: String that would be used to import ``path`` inside ``project_root_dir``.
+    :rtype: str
+    :raises :py:exc:`ValueError`:
+        If ``path`` is not inside ``project_root_dir``
+    :raises :py:exc:`RuntimeError`:
+        If ``path`` is equal to ``project_root_dir``
     """
     if Path(project_root_dir / "__init__.py").exists():
         project_root_dir = project_root_dir.parent

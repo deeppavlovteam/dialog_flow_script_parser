@@ -1,21 +1,33 @@
-from pathlib import Path
-import typing as tp
-import re
+"""This module contains a parser that recursively parses all the files imported in a root file
+"""
 import logging
+import typing as tp
+from pathlib import Path
 
 import libcst as cst
 
-from df_script_parser.utils.code_wrappers import Python, String
 from df_script_parser.processors.parse import Parser
-from df_script_parser.utils.namespaces import Namespace, NamespaceTag, Request, Import
-from df_script_parser.utils.module_metadata import ModuleType
-from df_script_parser.utils.validators import check_file_structure, validate_path
+from df_script_parser.utils.code_wrappers import Python, String
 from df_script_parser.utils.convenience_functions import get_module_name
-from df_script_parser.utils.exceptions import KeyNotFoundError, NamespaceNotParsedError, ObjectNotFoundError, ResolutionError, ParserError
+from df_script_parser.utils.exceptions import (
+    KeyNotFoundError,
+    NamespaceNotParsedError,
+    ObjectNotFoundError,
+    ResolutionError,
+    ParserError
+)
+from df_script_parser.utils.module_metadata import ModuleType
+from df_script_parser.utils.namespaces import Namespace, NamespaceTag, Request, Import
+from df_script_parser.utils.validators import check_file_structure, validate_path
 
 
 class RecursiveParser:
-    """Parse multiple files inside project root dir starting with the root file."""
+    """Parse multiple files inside project root dir starting with the root file
+
+    :param project_root_dir: Root directory of a project
+    :type project_root_dir: :py:class:`pathlib.Path`
+    """
+
     def __init__(
             self,
             project_root_dir: Path,
@@ -29,6 +41,15 @@ class RecursiveParser:
         self.fallback_label: tp.Optional[tp.Tuple[Python | String]] = None
 
     def get_object(self, request: Request) -> object:
+        """Return an object requested in ``request``
+
+        :param request: Request of an object
+        :type request: :py:class:`df_script_parser.utils.namespaces.Request`
+        :return: Object requested in a ``request``
+
+        :raise :py:exc:`df_script_parser.exceptions.ObjectNotFoundError`:
+            If a requested object is not found
+        """
         potential_namespace = NamespaceTag(".".join(map(repr, request.attributes[:-1])))
         namespace = self.namespaces.get(potential_namespace)
         if namespace is None:
@@ -46,14 +67,14 @@ class RecursiveParser:
             func: tp.Callable[[tp.List[Python | String], Python | String], None],
             traversed_path: tp.List[Python | String] = []
     ):
-        """
+        """Traverse a dictionary as a tree call ``func`` at leaf nodes of a tree
 
-        Call func at end-points of a dict.
-
-        :param script:
-        :param func:
-        :param traversed_path:
-        :return:
+        :param script: Dictionary to traverse
+        :param func: Function to be called
+        :type func:
+            Callable[[list[:py:class:`Python` | :py:class:`String`], :py:class:`Python` | :py:class:`String`], None]
+        :param traversed_path: Path to the current node
+        :return: None
         """
         for key in script:
             value = script[key]
@@ -72,9 +93,9 @@ class RecursiveParser:
             self,
             request: Request
     ) -> tp.Union[Import, dict, Python]:
-        """Retrieve a dict behind the request.
+        """Retrieve a dict behind the request
 
-        :param request:
+        :param request: Request to the dict
         :return:
         """
         name = self.get_object(request)
@@ -178,7 +199,7 @@ class RecursiveParser:
             if isinstance(element, Python):
                 return Python(element.absolute_value, show_yaml_tag=True)
             if isinstance(element, String):
-                return String(element.value, False)
+                return String(element.display_value, False)
             raise RuntimeError(f"Tuple element {element} is not of classes Python or String.")
 
         actor_args: tp.Dict[str, str | tp.List[Python | String]] = {}

@@ -1,12 +1,12 @@
 """Test parser as a whole."""
-from pathlib import Path
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
-from df_script_parser.processors.recursive_parser import RecursiveParser
 from df_script_parser.dumpers_loaders import yaml_dumper_loader
-from df_script_parser.utils.exceptions import WrongFileStructure, ScriptValidationError, KeyNotFoundError
+from df_script_parser.processors.recursive_parser import RecursiveParser
+from df_script_parser.utils.exceptions import WrongFileStructureError, ScriptValidationError, KeyNotFoundError
 
 
 @pytest.mark.parametrize(
@@ -14,15 +14,15 @@ from df_script_parser.utils.exceptions import WrongFileStructure, ScriptValidati
     [
         *[
             (
-                Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/py"),
-                Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/py/main.py"),
-                Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/yaml/script.yaml"),
+                    Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/py"),
+                    Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/py/main.py"),
+                    Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/yaml/script.yaml"),
                 exception
             ) for test_number, exception in zip(
                 range(1, 10),
                 [
                     None,
-                    WrongFileStructure,
+                    WrongFileStructureError,
                     ScriptValidationError,
                     None,
                     ScriptValidationError,
