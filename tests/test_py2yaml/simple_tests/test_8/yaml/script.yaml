@@ -1,9 +1,5 @@
 requirements:
 - df-engine==0.9.0
-script: main.script
-start label:
-- !py main.strings[1][main.ints[1]]
-- node
 namespaces:
   main:
     Actor: !from df_engine.core.actor Actor
@@ -17,3 +13,10 @@ namespaces:
       strings[1][ints[1]]:
         node:
           keywords.RESPONSE: hi
+    actor: !call
+      name: Actor
+      args:
+        script: script
+        start_label:
+          - strings[1][ints[1]]
+          - node

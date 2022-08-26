@@ -5,9 +5,8 @@ import pytest
 
 from df_script_parser import __version__
 from df_script_parser.utils.convenience_functions import get_module_name
-from df_script_parser.utils.module_metadata import get_module_info, ModuleType
 from df_script_parser.utils.exceptions import ModuleNotFoundParserError
-from df_script_parser.utils.namespaces import Namespace
+from df_script_parser.utils.module_metadata import get_module_info, ModuleType
 
 
 def test_version():
@@ -19,9 +18,9 @@ class TestSimpleFunctions:
         "file,project_root_dir,answer",
         [
             (
-                Path("tests/test_directory/__init__.py"),
-                Path("tests/test_directory/"),
-                "test_directory"
+                    Path("tests/test_directory/__init__.py"),
+                    Path("tests/test_directory/"),
+                    "test_directory.__init__"
             ),
             (
                 Path("tests/test_directory/file.py"),
@@ -29,9 +28,9 @@ class TestSimpleFunctions:
                 "test_directory.file"
             ),
             (
-                Path("tests/test_directory/another_package/__init__.py"),
-                Path("tests/test_directory/"),
-                "test_directory.another_package"
+                    Path("tests/test_directory/another_package/__init__.py"),
+                    Path("tests/test_directory/"),
+                    "test_directory.another_package.__init__"
             ),
             (
                 Path("tests/test_directory/another_package/file.py"),

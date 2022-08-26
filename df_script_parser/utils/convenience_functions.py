@@ -51,9 +51,9 @@ def get_module_name(path: Path, project_root_dir: Path) -> str:
     """
     if Path(project_root_dir / "__init__.py").exists():
         project_root_dir = project_root_dir.parent
-    path = Path(str(path).rstrip(".py"))
-    if str(path).endswith("__init__"):
-        path = path.parent
+    path = Path(str(path).removesuffix(".py"))
+    # if str(path).endswith("__init__"):
+    #     path = path.parent
     parts = path.relative_to(project_root_dir).parts
     if len(parts) == 0:
         raise RuntimeError(f"Parts are empty with path={path} and project_root_dir={project_root_dir}")

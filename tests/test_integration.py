@@ -6,7 +6,7 @@ import pytest
 
 from df_script_parser.dumpers_loaders import yaml_dumper_loader
 from df_script_parser.processors.recursive_parser import RecursiveParser
-from df_script_parser.utils.exceptions import WrongFileStructureError, ScriptValidationError, KeyNotFoundError
+from df_script_parser.utils.exceptions import ScriptValidationError, KeyNotFoundError
 
 
 @pytest.mark.parametrize(
@@ -19,17 +19,18 @@ from df_script_parser.utils.exceptions import WrongFileStructureError, ScriptVal
                     Path(f"tests/test_py2yaml/simple_tests/test_{test_number}/yaml/script.yaml"),
                 exception
             ) for test_number, exception in zip(
-                range(1, 10),
+                range(1, 11),
                 [
                     None,
-                    WrongFileStructureError,
+                    ScriptValidationError,
                     ScriptValidationError,
                     None,
                     ScriptValidationError,
                     KeyNotFoundError,
                     ScriptValidationError,
                     None,
-                    None
+                    None,
+                    None,
                 ]
             )
         ],

@@ -26,10 +26,12 @@ class NodeProcessor:
             namespace: Namespace,
             parse_tuples: bool = False,
     ):
-        """Process cst.Dict. Return a python object.
+        """Process :py:class:`.Dict`. Return a python object
 
-        :param Namespace namespace: Namespace used to determine if a tag is needed.
-        :param parse_tuples: bool, If true parse tuples as well
+        :param namespace: Namespace used to determine if a tag is needed.
+        :type namespace: :py:class:`.Namespace`
+        :param parse_tuples: If true parse tuples as well, defaults to False
+        :type parse_tuples: bool
         """
         self.namespace: Namespace = namespace
         self.parse_tuples = parse_tuples
@@ -82,7 +84,7 @@ class NodeProcessor:
 
         if isinstance(node, cst.SimpleString):
             value = node.evaluated_value
-            if is_correct(self.namespace, value):
+            if is_correct(list(self.namespace), value):
                 return String(value)
             else:
                 return String(value, show_yaml_tag=False)
@@ -95,82 +97,63 @@ class NodeProcessor:
         return self._process_node(node)
 
 
-# class Disambiguator:
-#     def __init__(self, script: dict, imports: tp.List[str]):
-#         """Process a dict. Return a dict with strings replaced with a subclass of StringTag.
-#         Store a start_label and a fallback_label paths if a corresponding StringTag was found.
-#
-#         :param imports: List[str], List of lines of code with import statements which are used to determine a subclass
-#         """
-#         self.imports = imports
-#         self.stack: tp.List[tp.Any] = []
-#         self.start_label: tp.Optional[tp.List[tp.Any]] = None
-#         self.fallback_label: tp.Optional[tp.List[tp.Any]] = None
-#         self.result = self._convert(script)
-#
-#     def _convert(self, obj: tp.Any) -> tp.Any:
-#         """Recursively replace all str instances inside os an obj with a correct StringTag subclass instance.
-#
-#         Replacement rules:
-#
-#         * If obj is a dict
-#             return a dict with all of its keys and values converted.
-#         * If obj is a list
-#             return a list with all of its values converted.
-#         * If obj is an instance of Start of Fallback classes or their subclasses
-#             store current path (as given by self.stack) in either self.start_label or self.fallback_label
-#         * If obj is an instance of str or Start or Fallback classes
-#             return either an instance of String or Python class or their subclasses.
-#             * If the string is a correct python code given self.imports
-#                 return a Python or its subclass instance else return a String or its subclass instance.
-#         """
-#         # ordered dict
-#         if isinstance(obj, dict):
-#             result = OrderedDict()
-#             for key in obj.keys():
-#                 new_key = self._convert(key)
-#                 self.stack.append(new_key)
-#                 # validate_stack(self.stack)
-#                 result[new_key] = self._convert(obj[key])
-#                 self.stack.pop()
-#             return dict(result)
-#
-#         # list
-#         if isinstance(obj, list):
-#             result = []
-#             for el in obj:
-#                 result.append(self._convert(el))
-#             return result
-#
-#         # str
-#         if isinstance(obj, str):
-#             return Python(obj) if is_correct(self.imports, obj) else String(obj)
-#
-#         # start
-#         if isinstance(obj, Start):
-#             if not isinstance(obj, (StartString, StartPython)):
-#                 obj = StartPython(obj.value) if is_correct(self.imports, obj.value) else StartString(obj.value)
-#             self.start_label = self.stack + [obj]
-#             return obj
-#
-#         # fallback
-#         if isinstance(obj, Fallback):
-#             if not isinstance(obj, (FallbackString, FallbackPython)):
-#                 obj = FallbackPython(obj.value) if is_correct(self.imports, obj.value) else FallbackString(obj.value)
-#             self.fallback_label = self.stack + [obj]
-#             return obj
-#
-#         return obj
+class Disambiguator:
+    """Class that processes a dict by replacing :py:class:`str` with a subclass of :py:class:`.StringTag`
+
+    To determine whether the string should be a :py:class:`.Python` or a :py:class:`.String` object uses a list of
+    names in the namespace
+    """
+
+    def __init__(self):
+        self.names: tp.List[str] = []
+        self.replace_lists_with_tuples: bool = False
+
+    def add_name(self, name: str):
+        """Add a name to the list of names in a namespace
+
+        :param name: Name to add
+        :type name: str
+        :return: None
+        """
+        self.names.append(name)
+
+    def _process_dict(self, obj: dict) -> dict:
+        result = OrderedDict()
+        for key in obj:
+            result[self._process(key)] = self._process(obj[key])
+        return dict(result)
+
+    def _process_list(self, obj: list) -> list | tuple:
+        result = []
+        for element in obj:
+            result.append(self._process(element))
+        if self.replace_lists_with_tuples:
+            return tuple(result)
+        return result
+
+    def _process(self, obj: tp.Any) -> tp.Any:
+        if isinstance(obj, dict):
+            return self._process_dict(obj)
+        if isinstance(obj, list):
+            return self._process_list(obj)
+        if isinstance(obj, str):
+            return Python(obj) if is_correct(self.names, obj) else String(obj)
+        return obj
+
+    def __call__(self, node: tp.Any):
+        return self._process(node)
 
 
-def is_correct(namespace: Namespace, code: str) -> bool:
+def is_correct(names: tp.List[str], code: str) -> bool:
     """Check code for correctness if names are available in the namespace.
 
-    :param Namespace namespace: Namespace in which the correctness is asserted
-    :param str code: String to check for correctness
+    :param names: Namespace in which the correctness is asserted
+    :type names: list[str]
+    :param code: String to check for correctness
+    :type code: str
     :return: Whether code is a correct python code
     :rtype: bool
     """
-    code_string = "\n".join([*(f"import {name}\n{name}" for name in list(namespace)), code])
+    code_string = "\n".join([*(f"import {name}\n{name}" for name in names), code])
     with open(devnull, "w") as null:
         return check(code_string, "", Reporter(null, null)) == 0

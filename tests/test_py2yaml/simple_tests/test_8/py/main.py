@@ -1,5 +1,5 @@
-from df_engine.core.actor import Actor
 from df_engine.core import keywords
+from df_engine.core.actor import Actor
 
 ints = {
     1: 2

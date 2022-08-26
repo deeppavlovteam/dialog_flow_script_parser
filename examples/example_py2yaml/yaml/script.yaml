@@ -1,13 +1,6 @@
 requirements:
 - df-engine==0.9.0
 - git+https://github.com/deepmipt/dialog_flow_engine.git@3a2e3e5d99cd3090c8f72315885dc91d398f2d74
-script: main.script
-start label:
-- global_flow
-- start_node
-fallback label:
-- global_flow
-- fallback_node
 namespaces:
   main:
     TRANSITIONS: !from df_engine.core.keywords TRANSITIONS
@@ -110,6 +103,16 @@ namespaces:
             transitions.greeting_flow_n2_transition: cnd.regexp(r"next", re.IGNORECASE)
             transitions.high_priority_node_transition("greeting_flow", "node4"): cnd.regexp(r"next time", re.IGNORECASE)
             lbl.to_fallback(): cnd.true()
+    actor: !call
+      name: Act
+      args:
+        fallback_label:
+          - !str global_flow
+          - fallback_node
+        script: script
+        start_label:
+          - !str global_flow
+          - start_node
   flow:
     TRANSITIONS: !from df_engine.core.keywords TRANSITIONS
     RESPONSE: !from df_engine.core.keywords RESPONSE

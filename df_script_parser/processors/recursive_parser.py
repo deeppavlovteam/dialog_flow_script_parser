@@ -14,7 +14,8 @@ from df_script_parser.utils.exceptions import (
     NamespaceNotParsedError,
     ObjectNotFoundError,
     ResolutionError,
-    ParserError
+    ParserError,
+    ScriptValidationError,
 )
 from df_script_parser.utils.module_metadata import ModuleType
 from df_script_parser.utils.namespaces import Namespace, NamespaceTag, Request, Import
@@ -50,16 +51,33 @@ class RecursiveParser:
         :raise :py:exc:`df_script_parser.exceptions.ObjectNotFoundError`:
             If a requested object is not found
         """
-        potential_namespace = NamespaceTag(".".join(map(repr, request.attributes[:-1])))
-        namespace = self.namespaces.get(potential_namespace)
-        if namespace is None:
-            raise NamespaceNotParsedError(f"Not found namespace {repr(potential_namespace)}")
-        name = namespace.names.get(request.attributes[-1])
-        if name is None:
-            raise ObjectNotFoundError(f"Not found {request.attributes[-1]} in {potential_namespace}")
-        while isinstance(name, Python):
-            name = self.get_object(Request.from_str(name.absolute_value))
-        return name
+        for i in reversed(range(1, len(request.attributes))):
+            try:
+                left = request.attributes[:i]
+                middle = request.attributes[i]
+                right = request.attributes[i + 1:]
+                potential_namespace = NamespaceTag(".".join(map(repr, left)))
+                namespace = self.namespaces.get(potential_namespace)
+                if namespace is None:
+                    raise NamespaceNotParsedError(
+                        f"Not found namespace {repr(potential_namespace)}, request={request}"
+                    )
+                name = namespace.names.get(middle)
+                if name is None:
+                    raise ObjectNotFoundError(
+                        f"Not found {request.attributes[-1]} in {potential_namespace}, request={request}"
+                    )
+                if isinstance(name, Python):
+                    name = self.get_object(Request.from_str(
+                        ".".join([
+                            name.absolute_value,
+                            *map(repr, right)
+                        ])
+                    ))
+                return name
+            except ResolutionError as error:
+                logging.debug("Name not found reason: %s", error)
+        raise ResolutionError(f"Cannot find object {request}")
 
     def traverse_dict(
             self,
@@ -113,6 +131,37 @@ class RecursiveParser:
             name = name[key]
         return name
 
+    def check_actor_args(self, actor_args: dict):
+        """Checks :py:class:`~df_engine.core.actor.Actor` args for correctness
+
+        :param actor_args: Arguments of the :py:class:`~df_engine.core.actor.Actor` call
+        :type actor_args: dict
+        :return: None
+        """
+        script = actor_args.get("script")
+        if script is None:
+            raise ScriptValidationError("Actor call should have a ``script`` argument")
+        start_label = actor_args.get("start_label")
+        if start_label is None:
+            raise ScriptValidationError("Actor call should have a ``start_label`` argument")
+        fallback_label = actor_args.get("fallback_label")
+
+        if not isinstance(script, Python):
+            raise RuntimeError(f"Script argument in actor is not a Python instance: {script}")
+        script_request = Request.from_str(script.absolute_value)
+        script = self.get_object(script_request)
+        if not isinstance(script, dict):
+            raise RuntimeError(f"Script is not a dict: {script}")
+
+        self.traverse_dict(script, validate_path)
+
+        for label in [start_label, fallback_label]:
+            if label:
+                if not isinstance(label, tuple):
+                    raise RuntimeError(f"Label is not a tuple: {label}")
+                script_request.indices = list(label)
+                self.check_node_existence(script_request)
+
     def process_import(self, module_type: ModuleType, module_metadata: str):
         """Import module hook for Namespace.
 
@@ -127,17 +176,19 @@ class RecursiveParser:
         if module_type == ModuleType.LOCAL:
             module_name = get_module_name(Path(module_metadata), self.project_root_dir)
 
-            if NamespaceTag(module_name) not in self.namespaces:
+            tag = NamespaceTag(module_name, module_name.removesuffix(".__init__"))
 
-                namespace = self.namespaces[NamespaceTag(module_name)] = Namespace(
-                    Path(module_metadata), self.project_root_dir, self.process_import
+            if tag not in self.namespaces:
+
+                namespace = self.namespaces[tag] = Namespace(
+                    Path(module_metadata), self.project_root_dir, self.process_import, self.check_actor_args
                 )
 
                 try:
                     self.fill_namespace_from_file(Path(module_metadata).absolute(), namespace)
                     logging.info(f"Added namespace {namespace.name}")
                 except ParserError as error:
-                    self.unprocessed.append(NamespaceTag(module_name))
+                    self.unprocessed.append(tag)
                     logging.warning(f"File {Path(module_metadata)} not included: {error}")
 
     def fill_namespace_from_file(self, file: Path, namespace: Namespace) -> Parser:
@@ -165,58 +216,19 @@ class RecursiveParser:
         :return:
         """
         starting_from_file = Path(starting_from_file).absolute()
+        module_name = get_module_name(starting_from_file, self.project_root_dir)
+
+        tag = NamespaceTag(module_name, module_name.removesuffix(".__init__"))
         namespace = self.namespaces[
-            NamespaceTag(get_module_name(starting_from_file, self.project_root_dir))
-        ] = Namespace(starting_from_file, self.project_root_dir, self.process_import)
+            tag
+        ] = Namespace(starting_from_file, self.project_root_dir, self.process_import, self.check_actor_args)
 
-        transformer = self.fill_namespace_from_file(starting_from_file, namespace)
-
-        self.script = transformer.args.get("script")
-        self.start_label = transformer.args.get("start_label")
-        self.fallback_label = transformer.args.get("fallback_label")
-
-        if self.script:
-            if not isinstance(self.script, Python):
-                raise RuntimeError(f"Script argument in actor is not a Python instance: {self.script}")
-            script_request = Request.from_str(self.script.absolute_value)
-            script = self.get_object(script_request)
-            if not isinstance(script, dict):
-                raise RuntimeError(f"Script is not a dict: {script}")
-
-            self.traverse_dict(script, validate_path)
-
-            for label in [self.start_label, self.fallback_label]:
-                if label:
-                    if not isinstance(label, tuple):
-                        raise RuntimeError(f"Label is not a tuple: {label}")
-                    script_request.indices = list(label)
-                    self.check_node_existence(script_request)
+        self.fill_namespace_from_file(starting_from_file, namespace)
 
         return self.to_dict()
 
     def to_dict(self) -> dict:
-        def _process_label_element(element: Python | String) -> Python | String:
-            if isinstance(element, Python):
-                return Python(element.absolute_value, show_yaml_tag=True)
-            if isinstance(element, String):
-                return String(element.display_value, False)
-            raise RuntimeError(f"Tuple element {element} is not of classes Python or String.")
-
-        actor_args: tp.Dict[str, str | tp.List[Python | String]] = {}
-        if self.script:
-            actor_args["script"] = self.script.absolute_value
-        if self.start_label:
-            actor_args["start label"] = list(map(
-                _process_label_element,
-                self.start_label
-            ))
-        if self.fallback_label:
-            actor_args["fallback label"] = list(map(
-                _process_label_element,
-                self.fallback_label
-            ))
         return {
             "requirements": self.requirements,
-            **actor_args,
             "namespaces": {k: v.names for k, v in self.namespaces.items() if k not in self.unprocessed}
         }

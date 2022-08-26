@@ -1,10 +1,10 @@
-from df_engine.core.keywords import TRANSITIONS, RESPONSE, PROCESSING, LOCAL
-import df_engine.conditions as cnd
-import df_engine.labels as lbl
 import re
 
-from functions import add_prefix
+import df_engine.conditions as cnd
+import df_engine.labels as lbl
+from df_engine.core.keywords import TRANSITIONS, RESPONSE, PROCESSING, LOCAL
 
+from functions import add_prefix
 
 global_flow = {
     LOCAL: {PROCESSING: {2: add_prefix("l2_local"), 3: add_prefix("l3_local")}},

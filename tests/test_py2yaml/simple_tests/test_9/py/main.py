@@ -1,5 +1,5 @@
-from df_engine.core.actor import Actor
 from df_engine.core import keywords as kw
+from df_engine.core.actor import Actor
 
 another_script = script = {
     "flow": {

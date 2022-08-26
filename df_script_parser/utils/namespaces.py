@@ -5,7 +5,9 @@ import typing as tp
 from pathlib import Path
 
 import libcst as cst
+from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.constructor import Constructor
+from ruamel.yaml.representer import Representer
 
 from df_script_parser.utils.code_wrappers import Python, StringTag, String
 from df_script_parser.utils.convenience_functions import evaluate
@@ -27,6 +29,9 @@ class Import(Python):
 
     def __init__(self, module):
         super().__init__(module, show_yaml_tag=True, display_absolute_value=False)
+
+    def __repr__(self):
+        return f"import {self.display_value}"
 
 
 class From(Python):
@@ -56,6 +61,9 @@ class From(Python):
         self.module_name = module_name
         self.obj = obj
 
+    def __repr__(self):
+        return f"from {self.module_name} import {self.obj}"
+
     @classmethod
     def from_yaml(cls, constructor: Constructor, node: "StringTag"):
         split = node.value.split(" ")
@@ -67,15 +75,57 @@ class AltName(Python):
     """
 
 
-class NamespaceTag(StringTag):
+class ActorTag(Python):
+    """This class is used to represent a call to :py:class:`df_engine.core.actor.Actor`
+    """
+    yaml_tag = "!actor"
+
+    def __init__(
+            self,
+            display_value: str,
+            absolute_value: str | None = None,
+            show_yaml_tag: bool = False,
+            display_absolute_value: bool = False,
+    ):
+        super().__init__(display_value, absolute_value, show_yaml_tag, display_absolute_value)
+
+
+class Call:
+    yaml_tag = "!call"
+
+    def __init__(self, name: str, args: dict):
+        self.name: str = name
+        self.args: dict = args
+
+    def __repr__(self):
+        return self.name + "(" + ", ".join(f"{key}={value}" for key, value in self.args.items()) + ")"
+
+    @classmethod
+    def to_yaml(cls, representer: Representer, node: "Call"):
+        return representer.represent_mapping(cls.yaml_tag, {"name": node.name, "args": node.args})
+
+    @classmethod
+    def from_yaml(cls, constructor: Constructor, node):
+        data = CommentedMap()
+        constructor.construct_mapping(node, data, deep=True)
+        return cls(**data)
+
+
+class NamespaceTag(Python):
     """This class is used to store a name of a namespace.
 
     - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.show_yaml_tag` is set to False by default
     """
     yaml_tag = "!namespace"
 
-    def __init__(self, value: str, show_yaml_tag: bool = False):
-        super().__init__(value, show_yaml_tag)
+    def __init__(
+            self,
+            display_value: str,
+            absolute_value: str | None = None,
+            show_yaml_tag: bool = False,
+            display_absolute_value: bool = False,
+    ):
+        super().__init__(display_value, absolute_value, show_yaml_tag, display_absolute_value)
 
     def __hash__(self):
         return hash(self.absolute_value)
@@ -214,21 +264,28 @@ class Namespace:
     :type path: :py:class:`pathlib.Path`
     :param project_root_dir: Root dir of the project, used to get a relative name of the file
     :type project_root_dir: :py:class:`pathlib.Path`
-    :param import_module_hook: Function that is being called when an import is added to the namespace
-    :type import_module_hook: Callable[[:py:class:`df_script_parser.utils.module_metadata.ModuleType`, str], None]
+    :param import_module_hook: Function that is being called when an import is added to the namespace, defaults to None
+    :type import_module_hook:
+        Callable[[:py:class:`.ModuleType`, str], None] | None, optional
+    :param actor_args_check: Function that is being called when an instance of :py:class:`df_engine.core.actor.Actor` is
+        created, defaults to None
+    :type actor_args_check:
+        Callable[[dict], None] | None, optional
     """
 
     def __init__(
             self,
             path: Path,
             project_root_dir: Path,
-            import_module_hook: tp.Callable[[ModuleType, str], None],
+            import_module_hook: tp.Callable[[ModuleType, str], None] | None = None,
+            actor_args_check: tp.Callable[[dict], None] | None = None
     ):
         self.path = Path(path)
         self.project_root_dir = Path(project_root_dir)
-        self.name: str = get_module_name(self.path, self.project_root_dir)
-        self.names: tp.Dict[Python, Import | From | Python | dict] = {}
+        self.name: str = get_module_name(self.path, self.project_root_dir).removesuffix(".__init__")
+        self.names: tp.Dict[Python, Import | From | Python | Call | dict] = {}
         self.import_module_hook = import_module_hook
+        self.actor_args_check = actor_args_check
 
     def __iter__(self):
         for name in self.names:
@@ -251,11 +308,12 @@ class Namespace:
         :rtype: str
         """
         module_type, module_metadata = get_module_info(module_name, self.path.parent)
-        self.import_module_hook(module_type, module_metadata)
+        if self.import_module_hook:
+            self.import_module_hook(module_type, module_metadata)
 
         return get_module_name(
             Path(module_metadata), self.project_root_dir
-        ) if module_type is ModuleType.LOCAL else module_name
+        ).removesuffix(".__init__") if module_type is ModuleType.LOCAL else module_name
 
     def add_import(
             self,
@@ -307,11 +365,12 @@ class Namespace:
         :type obj: str
         :param alias: The alternative name
         :type alias: str
-        :return: None?
+        :return: None
         """
+        # ToDo: obj, alias order is counterintuitive. Should probably be alias, obj
         if Python(obj) not in self:
             raise ObjectNotFoundError(f"Not found {obj} in {self.names}")
-        self.names[Python(alias)] = AltName(obj)
+        self.names[Python(alias)] = AltName(obj, absolute_value=self.get_absolute_name(obj))
 
     def add_dict(
             self,
@@ -327,6 +386,31 @@ class Namespace:
         :return:
         """
         self.names[Python(name)] = dictionary
+
+    def add_function_call(
+            self,
+            name: str,
+            func_name: str,
+            args: dict,
+            check_args: bool = False,
+    ):
+        """Add a call to :py:class:`df_engine.core.actor.Actor`
+
+        :param name: Name of the actor
+        :type name: str
+        :param func_name: Name of the function to add
+        :type func_name: str
+        :param args: Dictionary of arguments of the call
+        :type args: dict
+        :param check_args:
+            Whether to check args for correctness if the function being called is :py:class:`df_engine.core.Actor`,
+            defaults to False
+        :type check_args: bool
+        :return:
+        """
+        if check_args and self.actor_args_check:
+            self.actor_args_check(args)
+        self.names[ActorTag(name)] = Call(func_name, args)
 
     def get_absolute_name(self, name: str) -> str | None:
         """Get an absolute variant of a name
@@ -348,9 +432,9 @@ class Namespace:
         ``[df_engine, core, keywords, GLOBAL]`` if this method is called with ``[kw, GLOBAL]``
 
         :param names: List of module and object names
-        :type names: list[:py:class:`df_script_parser.utils.code_wrappers.Python`]
+        :type names: list[:py:class:`.Python`]
         :return: Absolute name of the object
-        :rtype: list[:py:class:`df_script_parser.utils.code_wrappers.Python`]
+        :rtype: list[:py:class:`.code_wrappers.Python`]
         """
         stack = []
         for item in names:
@@ -361,7 +445,7 @@ class Namespace:
                 names_left = names[len(stack):]
                 while isinstance(obj, AltName):
                     name = obj
-                    obj = self.names[name]
+                    obj = self.names[Python(name.display_value)]
                 if isinstance(obj, From):
                     return list(map(Python, obj.module_name.split(".") + obj.obj.split("."))) + names_left
                 if isinstance(obj, Import):

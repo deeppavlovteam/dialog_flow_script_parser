@@ -1,12 +1,5 @@
 requirements:
 - df-engine==0.9.0
-script: py.main.script
-start label:
-- start_flow
-- start_node
-fallback label:
-- fallback_flow
-- fallback_node
 namespaces:
   py.main:
     act: !from df_engine.core.actor Actor
@@ -18,7 +11,17 @@ namespaces:
         rsp: !str glb
       start_flow: flows.sf
       fallback_flow: flows.ff
-  py.flows:
+    actor: !call
+      name: act
+      args:
+        fallback_label:
+          - fallback_flow
+          - fallback_node
+        start_label:
+          - start_flow
+          - start_node
+        script: script
+  py.flows.__init__:
     ff: !from py.flows.fallback_flow fallback_flow
     sf: !from py.flows.start_flow start_flow
   py.flows.fallback_flow:
@@ -31,7 +34,7 @@ namespaces:
     rp: !from df_engine.core.keywords RESPONSE
     fallback_node:
       rp: bye
-  py.nodes:
+  py.nodes.__init__:
     sn: !from py.nodes.start_node start_node
     fn: !from py.nodes.fallback_node fallback_node
   py.nodes.start_node:

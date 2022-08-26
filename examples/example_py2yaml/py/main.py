@@ -1,3 +1,9 @@
+import re
+
+import df_engine.conditions as cnd
+import df_engine.labels as lbl
+import df_engine.responses as rsp
+from df_engine.core import Actor as Act
 from df_engine.core.keywords import (
     TRANSITIONS,
     RESPONSE,
@@ -6,15 +12,9 @@ from df_engine.core.keywords import (
     MISC,
     LOCAL,
 )
-import df_engine.conditions as cnd
-import df_engine.labels as lbl
-from df_engine.core import Actor as Act, Context
-import df_engine.responses as rsp
-from functions import add_prefix
-import typing as tp, re, transitions
-from flow import global_flow
-import dff
 
+import transitions
+from functions import add_prefix
 
 script = {
     GLOBAL: {
