@@ -112,24 +112,27 @@ class TestSimpleFunctions:
                 ModuleNotFoundParserError,
             ),
             (
-                ("..nodes", Path("tests/test_py2yaml/complex_tests/test_1/py/flows")),
+                ("..nodes", Path("tests/test_py2yaml/complex_tests/test_1/python_files/flows")),
                 (
                     ModuleType.LOCAL,
-                    str(Path("tests/test_py2yaml/complex_tests/test_1/py/nodes/__init__.py").absolute())
+                    str(Path("tests/test_py2yaml/complex_tests/test_1/python_files/nodes/__init__.py").absolute())
                 ),
                 None
             ),
             (
-                ("..nodes.fallback_node", Path("tests/test_py2yaml/complex_tests/test_1/py/flows")),
+                ("..nodes.fallback_node", Path("tests/test_py2yaml/complex_tests/test_1/python_files/flows")),
                 (
                     ModuleType.LOCAL,
-                    str(Path("tests/test_py2yaml/complex_tests/test_1/py/nodes/fallback_node.py").absolute())
+                    str(Path("tests/test_py2yaml/complex_tests/test_1/python_files/nodes/fallback_node.py").absolute())
                 ),
                 None
             ),
             (
-                ("..main", Path("tests/test_py2yaml/complex_tests/test_1/py/flows")),
-                (ModuleType.LOCAL, str(Path("tests/test_py2yaml/complex_tests/test_1/py/main.py").absolute())),
+                ("..main", Path("tests/test_py2yaml/complex_tests/test_1/python_files/flows")),
+                (
+                    ModuleType.LOCAL,
+                    str(Path("tests/test_py2yaml/complex_tests/test_1/python_files/main.py").absolute())
+                ),
                 None
             ),
         ]

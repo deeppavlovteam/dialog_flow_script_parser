@@ -35,7 +35,7 @@ class RecursiveParser:
     ):
         self.project_root_dir = Path(project_root_dir).absolute()
         self.requirements: tp.List[str] = []
-        self.namespaces: tp.Dict[NamespaceTag, Namespace] = {}
+        self.namespaces: tp.Dict[NamespaceTag, Namespace | None] = {}
         self.unprocessed: tp.List[NamespaceTag] = []
         self.script: tp.Optional[Python] = None
         self.start_label: tp.Optional[tp.Tuple[Python | String]] = None
@@ -163,9 +163,9 @@ class RecursiveParser:
                 self.check_node_existence(script_request)
 
     def process_import(self, module_type: ModuleType, module_metadata: str):
-        """Import module hook for Namespace.
+        """Import module hook for :py:class:`.Namespace`
 
-        Adds distribution metadata to requirements. Parses local files.
+        Adds distribution metadata to requirements. Parses local files
 
         :param module_type:
         :param module_metadata:
@@ -178,7 +178,7 @@ class RecursiveParser:
 
             tag = NamespaceTag(module_name, module_name.removesuffix(".__init__"))
 
-            if tag not in self.namespaces:
+            if tag not in self.namespaces or self.namespaces[tag] is None:
 
                 namespace = self.namespaces[tag] = Namespace(
                     Path(module_metadata), self.project_root_dir, self.process_import, self.check_actor_args
@@ -192,15 +192,26 @@ class RecursiveParser:
                     logging.warning(f"File {Path(module_metadata)} not included: {error}")
 
     def fill_namespace_from_file(self, file: Path, namespace: Namespace) -> Parser:
-        """Parse a file, add its contents to a namespace.
+        """Parse a file, add its contents to a namespace
 
         :param file:
         :param namespace:
         :return:
         """
+        # Add parent init files to namespaces
+        path_to_file = Path(file).absolute().parent.relative_to(self.project_root_dir.parent).parts
+
+        for path_index in range(len(path_to_file)):
+            init_file = self.project_root_dir.parent.joinpath(*path_to_file[:path_index + 1]) / "__init__.py"
+            module_name = get_module_name(init_file, self.project_root_dir)
+
+            tag = NamespaceTag(module_name, module_name.removesuffix(".__init__"))
+            if init_file.exists() and tag not in self.namespaces:
+                self.namespaces[tag] = None
+
+        # Parse file contents
         with open(file, "r") as input_file:
             py_contents = input_file.read()
-        # ToDo: add pyflake check
 
         parsed_file = cst.parse_module(py_contents)
 
@@ -230,5 +241,5 @@ class RecursiveParser:
     def to_dict(self) -> dict:
         return {
             "requirements": self.requirements,
-            "namespaces": {k: v.names for k, v in self.namespaces.items() if k not in self.unprocessed}
+            "namespaces": {k: v.names if v else {} for k, v in self.namespaces.items() if k not in self.unprocessed}
         }
