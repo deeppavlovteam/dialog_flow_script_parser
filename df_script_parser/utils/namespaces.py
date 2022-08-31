@@ -9,7 +9,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.constructor import Constructor
 from ruamel.yaml.representer import Representer
 
-from df_script_parser.utils.code_wrappers import Python, StringTag, String
+from df_script_parser.utils.code_wrappers import Python, String
 from df_script_parser.utils.convenience_functions import evaluate
 from df_script_parser.utils.convenience_functions import get_module_name
 from df_script_parser.utils.exceptions import ObjectNotFoundError, ResolutionError, RequestParsingError
@@ -65,7 +65,7 @@ class From(Python):
         return f"from {self.module_name} import {self.obj}"
 
     @classmethod
-    def from_yaml(cls, constructor: Constructor, node: "StringTag"):
+    def from_yaml(cls, constructor: Constructor, node):
         split = node.value.split(" ")
         return cls(split[0], split[1])
 
@@ -76,22 +76,14 @@ class AltName(Python):
 
 
 class ActorTag(Python):
-    """This class is used to represent a call to :py:class:`df_engine.core.actor.Actor`
+    """This class is used as a key in a dictionary for :py:class:`.Call`. To be removed
     """
     yaml_tag = "!actor"
 
-    def __init__(
-            self,
-            display_value: str,
-            absolute_value: str | None = None,
-            show_yaml_tag: bool = False,
-            display_absolute_value: bool = False,
-    ):
-        super().__init__(display_value, absolute_value, show_yaml_tag, display_absolute_value)
-
 
 class Call:
-    yaml_tag = "!call"
+    """This class is used to represent a function call"""
+    yaml_tag = "!call"  # TdOo: replace with actor
 
     def __init__(self, name: str, args: dict):
         self.name: str = name
@@ -102,12 +94,27 @@ class Call:
 
     @classmethod
     def to_yaml(cls, representer: Representer, node: "Call"):
+        """Represent object in yaml
+
+        :param representer: Yaml node representer that provide functions for displaying values
+        :type representer: :py:class:`ruamel.yaml.representer.Representer`
+        :param node: Node that is represented
+        :type node: :py:class:`Call`
+        :return: Result of :py:meth:`.Representer.represent_mapping`
+        """
         return representer.represent_mapping(cls.yaml_tag, {"name": node.name, "args": node.args})
 
     @classmethod
     def from_yaml(cls, constructor: Constructor, node):
+        """Construct the class from yaml
+
+        :param constructor: Yaml constrtuctor of a class
+        :type constructor: :py:class:`.Constructor`
+        :param node: Yaml node
+        :return: Instance of the class
+        """
         data = CommentedMap()
-        constructor.construct_mapping(node, data, deep=True)
+        constructor.construct_mapping(node, data, deep=True)  # type: ignore
         return cls(**data)
 
 
@@ -117,15 +124,6 @@ class NamespaceTag(Python):
     - :py:attr:`df_script_parser.utils.code_wrappers.StringTag.show_yaml_tag` is set to False by default
     """
     yaml_tag = "!namespace"
-
-    def __init__(
-            self,
-            display_value: str,
-            absolute_value: str | None = None,
-            show_yaml_tag: bool = False,
-            display_absolute_value: bool = False,
-    ):
-        super().__init__(display_value, absolute_value, show_yaml_tag, display_absolute_value)
 
     def __hash__(self):
         return hash(self.absolute_value)
@@ -367,7 +365,6 @@ class Namespace:
         :type alias: str
         :return: None
         """
-        # ToDo: obj, alias order is counterintuitive. Should probably be alias, obj
         if Python(obj) not in self:
             raise ObjectNotFoundError(f"Not found {obj} in {self.names}")
         self.names[Python(alias)] = AltName(obj, absolute_value=self.get_absolute_name(obj))

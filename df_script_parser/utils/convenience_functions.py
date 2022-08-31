@@ -2,11 +2,12 @@
 """
 import re
 from pathlib import Path
+import typing as tp
 
 import libcst as cst
 
 
-def evaluate(node: cst.CSTNode | str) -> str:
+def evaluate(node: tp.Union[cst.CSTNode, str]) -> str:
     """Get string representation of :py:class:`libcst.CSTNode`
 
     :param node: Node to evaluate.
